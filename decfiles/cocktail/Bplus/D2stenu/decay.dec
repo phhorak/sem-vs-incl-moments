@@ -1,0 +1,24 @@
+noPhotos
+
+# B+ -> anti-D_2*0 e+ nu (LLSW)
+# anti-D_2*0 -> D- pi+  (TSS, D-wave) : fraction 1.54/2.54 = 0.6063
+# anti-D_2*0 -> D*- pi+ (TVS_PWAVE)   : fraction 1/2.54   = 0.3937
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+1.0  anti-D_2*0  e+  nu_e   LLSW 0.71 -1.6 -0.5 2.9;
+Enddecay
+CDecay B-sig
+
+SetLineshapePW anti-D_2*0 D*- pi+ 2
+
+Decay anti-D_2*0
+0.6063  D-   pi+  TSS;
+0.3937  D*-  pi+  TVS_PWAVE  0.0 0.0 1.0 0.0 0.0 0.0;
+Enddecay
+CDecay D_2*0
+
+End

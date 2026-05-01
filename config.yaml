@@ -1,0 +1,123 @@
+release: light-2509-fornax
+
+paths:
+  decfiles_cocktail: decfiles/cocktail
+  decfiles_gap_modes: decfiles/gap_modes
+  output: output
+  figures: figures
+
+generation:
+  n_events_per_job: 200000
+  n_jobs: 1
+  queue: s
+  batch_output_dir: /ghi/fs01/belle2/bdata/users/phorak/sigmc/evtgen
+  cocktail_modes:
+    - Bplus/Dstenu
+    - Bplus/Denu
+    - Bplus/D1enu
+    - Bplus/D0stenu
+    - Bplus/Dp1enu
+    - Bplus/D2stenu
+    - Bplus/Dstmpienu
+    - Bplus/Dst0pi0enu
+    - Bplus/Dmpienu
+    - Bplus/D0pi0enu
+    - Bplus/D0pipipenu
+    - Bplus/Dmpipizenu
+    - Bplus/D0pizpizenu
+    - Bplus/Dst0pipipenu
+    - Bplus/Dstmpipizenu
+    - Bplus/Dst0pizpizenu
+    - Bplus/DsstkKenu
+    - Bplus/DsKenu
+    - Bplus/D0etaenu
+    - Bplus/Dst0etaenu
+    # Uncomment B0 modes for full isospin sample:
+    # - B0/Dstenu
+    # - B0/Denu
+    # - B0/D1enu
+    # - B0/D0stenu
+    # - B0/Dp1enu
+    # - B0/D2stenu
+    # - B0/Dst0pienu
+    # - B0/Dstpi0enu
+    # - B0/D0pienu
+    # - B0/Dpi0enu
+    # - B0/Dpipipenu
+    # - B0/D0pipipzenu
+    # - B0/Dpizpizenu
+    # - B0/Dstpipipenu
+    # - B0/Dst0pipipzenu
+    # - B0/Dstpizpizenu
+    # - B0/Detaenu
+    # - B0/Dstetaenu
+  gap_modes:
+    - D2stDeta
+    - DummyDeta
+    - Dp1DstEta
+    - Dp1Deta
+    - DsKenu
+    - LcPenu
+
+digitize:
+  dsk_plot: inputs/digitize_plots/dsk.png
+  dsk_x_min: 2.35
+  dsk_x_max: 5.4
+  dsk_y_min: 0.0
+  dsk_y_max: 152
+  lambdac_plot: inputs/digitize_plots/lambdac_p.png
+  lambdac_x_min: 3.2
+  lambdac_x_max: 4.6
+  lambdac_y_min: -4
+  lambdac_y_max: 76
+
+reweight:
+  bf_gap: 0.018       # total branching-fraction budget for all gap modes
+  lcp_mass_max: 4.6
+  lcp_nbins: 40
+  lcp_max_ratio: 10.0
+
+average:
+  corr_same_exp_same_var: 0.0
+  corr_same_exp_diff_var: 0.0
+  corr_diff_exp: 0.0
+  inflate_if_incompatible: true
+  exclude_experiments:
+    #- delphi
+    #- cleo
+    #- cdf
+
+plots:
+  exp_data_tar: inputs/sem.tar.gz
+  n_toys: 50
+  toy_seed: 42
+  el_cuts_min: 0.0
+  el_cuts_max: 1.7
+  el_cuts_n: 35
+  q2_cuts_min: 0.0
+  q2_cuts_max: 10.0
+  q2_cuts_n: 45
+  n_bootstrap: 200
+  weight_col: total_weight
+
+
+fit:
+  mode: both      # "simultaneous" or "individual" or "both"
+  include_cocktail_dsk: true  # if false, zero the Ds(*)K component in the SM cocktail in step 6
+  gap_modes:              # gap modes to include; subset of generation.gap_modes
+    - D2stDeta
+    - DummyDeta
+    - Dp1DstEta
+    - Dp1Deta
+    #- DsKenu
+    - LcPenu
+  el_cut_min: 0.0
+  mx_upper_cut: null      # optional event-level cut in step 6: keep only events with M_X < this value, or put "null"
+  n_br_nuisance: 30
+  n_ff_nuisance: 200
+  theta_br_bound: 10.0
+  theta_ff_bound: 10.0
+  delta_chi2: 2.71        # 95% CL threshold for profile likelihood scan
+  mu_total_scan_max: 2.0
+  n_scan: 1000
+  br_ref: 0.018           # reference BF for mu normalization (mu=1 corresponds to BR=br_ref)

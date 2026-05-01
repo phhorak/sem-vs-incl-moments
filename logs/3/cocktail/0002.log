@@ -1,0 +1,91 @@
+Sender: LSF System <lsfadmin@cb035>
+Subject: Job 68071789: <python3 /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/3_reweight.py --config config.yaml --cocktail-job-index 2 --cocktail-job-count 20 --skip-gap --skip-plots> in cluster <centralcluster> Done
+
+Job <python3 /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/3_reweight.py --config config.yaml --cocktail-job-index 2 --cocktail-job-count 20 --skip-gap --skip-plots> was submitted from host <cw03> by user <phorak> in cluster <centralcluster> at Fri May  1 07:07:42 2026
+Job was executed on host(s) <cb035>, in queue <s>, as user <phorak> in cluster <centralcluster> at Fri May  1 07:07:44 2026
+</home/belle2/phorak> was used as the home directory.
+</home/belle2/phorak/projects/sem-hausdorff/clean> was used as the working directory.
+Started at Fri May  1 07:07:44 2026
+Terminated at Fri May  1 07:08:43 2026
+Results reported at Fri May  1 07:08:43 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+python3 /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/3_reweight.py --config config.yaml --cocktail-job-index 2 --cocktail-job-count 20 --skip-gap --skip-plots
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   55.58 sec.
+    Max Memory :                                 1767 MB
+    Average Memory :                             382.27 MB
+    Total Requested Memory :                     4000.00 MB
+    Delta Memory :                               2233.00 MB
+    Max Swap :                                   2 MB
+    Max Processes :                              3
+    Max Threads :                                8
+    Run time :                                   58 sec.
+    Turnaround time :                            61 sec.
+
+The output (if any) follows:
+
+/cvmfs/belle.cern.ch/el9/externals/v02-03-03/Linux_x86_64/common/lib/python3.11/site-packages/scipy/integrate/_quadpack_py.py:1272: IntegrationWarning: The maximum number of subdivisions (50) has been achieved.
+  If increasing the limit yields no improvement it is advised to analyze 
+  the integrand in order to determine the difficulties.  If the position of a 
+  local difficulty can be determined (singularity, discontinuity) one will 
+  probably gain from splitting up the interval and calling the integrator 
+  on the subranges.  Perhaps a special-purpose integrator should be used.
+  quad_r = quad(f, low, high, args=args, full_output=self.full_output,
+INFO : _print_information_setup: 172 :  Set up Hammer study
+INFO : _print_information_setup: 173 :  The input variables have been specified as follows:
+INFO : _print_information_setup: 174 :  PDG variable: []
+INFO : _print_information_setup: 175 :  Four momentum variables: %s, %s, %s, %s,
+INFO : _print_information_setup: 179 :  B meson prefix:  
+INFO : _print_information_setup: 183 :  B meson daughter prefixes: [] 
+INFO : _print_information_setup: 187 :  Xc meson daughter prefixes: [] 
+INFO : _print_information_setup: 191 :  The HammerStudy class will take care of building the full variable names
+WARNING : _print_information_setup: 194 :  If this does not align with the variable names in your tuples set default_names = False in the object constructor and modify the following properties: ['four_momentum_vars', 'pdg_var', 'generations']
+WARNING : _print_information_setup: 202 :  DO NOT CHANGE the names of the keys in the generations dictionary as this will cause some of the HammerStudy functionalities to fail
+INFO : set_ff_input_scheme: 254 :  Defaulting to Belle II decay.dec parameters
+INFO : set_ff_input_scheme: 256 :  Enable the verbose option when calling set_ff_input_scheme to know more about the models that were use as an input
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up4 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down4 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up5 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down5 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up4 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down4 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up5 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down5 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down6 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_up7 with the nominal values
+WARNING : _pad_missing_eigenvariations: 426 :  Will pad model BLR for variation ff_weight_down7 with the nominal values
+Hammer initialised successfully.
+
+=== SECTION A: cocktail reweighting ===
+  cocktail chunk 3/20: 1 file(s)
+  reading output/1/Bplus/D0pipipenu/0000.root
+  saved 399,973 events → output/3/cocktail_chunks/cocktail_0002.parquet
+
+=== SECTION B: gap mode processing ===
+  [skip] gap mode processing disabled
+
+=== SECTION C: reweighting plots ===
+  [skip] reweighting plots disabled
+Step 3 complete.

@@ -1,0 +1,35 @@
+# Descriptor: [B- -> X(Lambda_c pbar) l- nu] dummy-resonant gap mode, e and mu, cc
+# NickName: Bu_LcPlnu_dummyres_gapmodes
+# Documentation: B -> Lambda_c pbar l nu via wide dummy resonance (m=3.8 GeV, w=3.0 GeV).
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260429
+
+Alias LcP0sig D_0*0
+Alias anti-LcP0sig anti-D_0*0
+ChargeConj LcP0sig anti-LcP0sig
+
+Particle LcP0sig      3.8 3.0
+Particle anti-LcP0sig 3.8 3.0
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 LcP0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 LcP0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B+sig
+
+Decay LcP0sig
+1.0 anti-Lambda_c- p+ PHSP;
+Enddecay
+CDecay anti-LcP0sig
+
+Decay Lambda_c+
+1.00  p+  K-  pi+  PHSP;
+Enddecay
+CDecay anti-Lambda_c-
+
+End

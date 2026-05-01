@@ -1,0 +1,3 @@
+[submodule "MCAmbulance"]
+	path = MCAmbulance
+	url = https://github.com/Herren/MCAmbulance.git

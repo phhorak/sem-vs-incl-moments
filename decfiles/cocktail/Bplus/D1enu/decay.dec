@@ -1,0 +1,21 @@
+noPhotos
+
+# B+ -> anti-D_10 e+ nu (LLSW), anti-D_10 -> D*- pi+  (VVS_PWAVE, P-wave)
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+1.0  anti-D_10   e+  nu_e   LLSW 0.71 -1.6 -0.5 2.9;
+Enddecay
+CDecay B-sig
+
+SetLineshapePW anti-D_10 D*- pi+ 2
+
+Decay anti-D_10
+1.0  D*-  pi+   VVS_PWAVE  0.0 0.0 0.0 0.0 1.0 0.0;
+Enddecay
+CDecay D_10
+
+End

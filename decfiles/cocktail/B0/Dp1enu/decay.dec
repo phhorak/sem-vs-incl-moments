@@ -1,0 +1,19 @@
+noPhotos
+
+# anti-B0 -> D'_1+ e- nu (LLSW), D'_1+ -> D*0 pi+  (VVS_PWAVE, P-wave)
+
+Decay Upsilon(4S)
+1.0  B0sig  anti-B0sig  VSS_BMIX dm;
+Enddecay
+
+Decay anti-B0sig
+1.0  D'_1+  e-  anti-nu_e   LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B0sig
+
+Decay D'_1+
+1.0  D*0  pi+   VVS_PWAVE  1.0 0.0 0.0 0.0 0.0 0.0;
+Enddecay
+CDecay anti-D'_1+
+
+End

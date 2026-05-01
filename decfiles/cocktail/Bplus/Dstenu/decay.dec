@@ -1,0 +1,14 @@
+noPhotos
+
+# B+ -> anti-D*0 e+ nu (BGL)
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+1.0  anti-D*0  e+  nu_e   BGL 0.02596 -0.06049 0.01311 0.01713 0.00753 -0.09346;
+Enddecay
+CDecay B-sig
+
+End

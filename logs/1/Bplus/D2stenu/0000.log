@@ -1,0 +1,513 @@
+Sender: LSF System <lsfadmin@cb021>
+Subject: Job 67995944: <basf2 /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/_generate_and_reco.py -- --dec_file decfiles/cocktail/Bplus/D2stenu/decay.dec --output output/1/Bplus/D2stenu/0000.root --mode Bplus/D2stenu --nevents 200000> in cluster <centralcluster> Done
+
+Job <basf2 /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/_generate_and_reco.py -- --dec_file decfiles/cocktail/Bplus/D2stenu/decay.dec --output output/1/Bplus/D2stenu/0000.root --mode Bplus/D2stenu --nevents 200000> was submitted from host <cw04> by user <phorak> in cluster <centralcluster> at Fri May  1 05:54:53 2026
+Job was executed on host(s) <cb021>, in queue <s>, as user <phorak> in cluster <centralcluster> at Fri May  1 05:55:02 2026
+</home/belle2/phorak> was used as the home directory.
+</home/belle2/phorak/projects/sem-hausdorff/clean> was used as the working directory.
+Started at Fri May  1 05:55:02 2026
+Terminated at Fri May  1 06:14:55 2026
+Results reported at Fri May  1 06:14:55 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+basf2 /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/_generate_and_reco.py -- --dec_file decfiles/cocktail/Bplus/D2stenu/decay.dec --output output/1/Bplus/D2stenu/0000.root --mode Bplus/D2stenu --nevents 200000
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   1180.82 sec.
+    Max Memory :                                 376 MB
+    Average Memory :                             370.56 MB
+    Total Requested Memory :                     4000.00 MB
+    Delta Memory :                               3624.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                5
+    Run time :                                   1193 sec.
+    Turnaround time :                            1202 sec.
+
+The output (if any) follows:
+
+[INFO] Steering file: /gpfs/home/belle2/phorak/projects/sem-hausdorff/clean/_generate_and_reco.py
+[INFO] Starting event processing, random seed is set to '1a175b14db41bf2015b82cb59c433719dbe8a3864415e0fa2c0af6c13c38a7f'
+[INFO] Conditions Database: found working metadata provider
+	provider = http://belle2db.sdcc.bnl.gov/b2s/rest/
+[INFO] Conditions data: configured globaltag is release-08-02-05
+[WARNING] Existing object 'ParticlesToMCParticles' (durability: event) has different persistency type than requested. Changing to c_WriteOut.  { module: MCMatch_B+:reco }
+[INFO] MCMatcher module will search for Particle -> MCParticle associations for the ParticleList B+:reco.
+[INFO]   - The MCMatcher will use default algorithm suitable for analysis of Belle II MC.
+[INFO] Begin of new run.
+[INFO] Output from EvtGen:
+  EvtGen:Defining EvtPhotosEngine using photonType = gamma
+  EvtGen:Setting up PHOTOS.
+  EvtGen:Using EvtGen random number engine also for Photos++
+  Message from PHCORK(MODCOR):: initialization
+  MODOP=5 -- corrects Energy from mass+flow
+  
+  ********************************************************************************
+  
+                              =========================
+                                PHOTOS, Version:  3.64
+                                Released at:  18/2/20
+                              =========================
+  
+                       Photos QED corrections in Particle Decays
+  
+             Monte Carlo Program - by E. Barberio, B. van Eijk and Z. Was
+             From version 2.09   - by P. Golonka and Z. Was
+             From version 3.00   - by N. Davidson, T. Przedzinski and Z. Was
+  ********************************************************************************
+  
+                    Internal (default) input parameters: 
+  
+                      INTERF= 1 ISEC= 0 ITRE= 0 IEXP= 1 IFTOP= 1 IFW= 1
+                      ALPHA_QED= 7.297350e-03 XPHCUT= 1.000000e-07
+  
+                      Option with interference is active
+                      Option with exponentiation is active EPSEXP=1.000000e-04
+                      Emision in t tbar production is active
+                      Correction wt in decay of W is active
+  
+            WARNING:  /HEPEVT/ is not anymore used.
+  
+  ********************************************************************************
+  MODOP=2 -- blocks emission in Kl  to gamma e+e-: DEFAULT
+  MODOP=2 -- blocks emission in pi0 to gamma e+e-: DEFAULT
+   IPHQRK_setQarknoEmission MODOP=1 -- blocks emission from light quarks:  DEFAULT
+  Message from PHCORK(MODCOR):: initialization
+  MODOP=5 -- corrects Energy from mass+flow
+  EvtGen:Defining EvtPythiaEngine: data tables defined in /cvmfs/belle.cern.ch/el9/externals/v02-00-02b/share/Pythia8/xmldoc
+  EvtGen:Pythia 8 codes need to be used in decay files
+  EvtGen:Using EvtGen random engine for Pythia 8 as well
+  EvtGen:Creating generic Pythia generator
+  
+   *------------------------------------------------------------------------------------* 
+   |                                                                                    | 
+   |  *------------------------------------------------------------------------------*  | 
+   |  |                                                                              |  | 
+   |  |                                                                              |  | 
+   |  |   PPP   Y   Y  TTTTT  H   H  III    A      Welcome to the Lund Monte Carlo!  |  | 
+   |  |   P  P   Y Y     T    H   H   I    A A     This is PYTHIA version 8.215      |  | 
+   |  |   PPP     Y      T    HHHHH   I   AAAAA    Last date of change:  4 Jan 2016  |  | 
+   |  |   P       Y      T    H   H   I   A   A                                      |  | 
+   |  |   P       Y      T    H   H  III  A   A    Now is 01 May 2026 at 05:55:06    |  | 
+   |  |                                                                              |  | 
+   |  |   Torbjorn Sjostrand;  Department of Astronomy and Theoretical Physics,      |  | 
+   |  |      Lund University, Solvegatan 14A, SE-223 62 Lund, Sweden;                |  | 
+   |  |      e-mail: torbjorn@thep.lu.se                                             |  | 
+   |  |   Jesper Roy Christiansen;  Department of Astronomy and Theoretical Physics, |  | 
+   |  |      Lund University, Solvegatan 14A, SE-223 62 Lund, Sweden;                |  | 
+   |  |      e-mail: Jesper.Roy.Christiansen@thep.lu.se                              |  | 
+   |  |   Nishita Desai;  Institut fuer Theoretische Physik,                         |  | 
+   |  |     Universitaet Heidelberg, Philosophenweg 16, D-69120 Heidelberg, Germany; |  | 
+   |  |      e-mail: n.desai@thphys.uni-heidelberg.de                                |  | 
+   |  |   Ilkka Helenius;  Department of Astronomy and Theoretical Physics,          |  | 
+   |  |      Lund University, Solvegatan 14A, SE-223 62 Lund, Sweden;                |  | 
+   |  |      e-mail: ilkka.helenius@thep.lu.se                                       |  | 
+   |  |   Philip Ilten;  Massachusetts Institute of Technology,                      |  | 
+   |  |      77 Massachusetts Ave, Cambridge, MA 02139, USA;                         |  | 
+   |  |      e-mail: philten@cern.ch                                                 |  | 
+   |  |   Stephen Mrenna;  Computing Division, Simulations Group,                    |  | 
+   |  |      Fermi National Accelerator Laboratory, MS 234, Batavia, IL 60510, USA;  |  | 
+   |  |      e-mail: mrenna@fnal.gov                                                 |  | 
+   |  |   Stefan Prestel;  Theoretical Physics Group,                                |  | 
+   |  |      SLAC National Accelerator Laboratory, Menlo Park, CA 94025, USA;        |  | 
+   |  |      e-mail: prestel@slac.stanford.edu                                       |  | 
+   |  |   Christine O. Rasmussen;  Department of Astronomy and Theoretical Physics,  |  | 
+   |  |      Lund University, Solvegatan 14A, SE-223 62 Lund, Sweden;                |  | 
+   |  |      e-mail: christine.rasmussen@thep.lu.se                                  |  | 
+   |  |   Peter Skands;  School of Physics,                                          |  | 
+   |  |      Monash University, PO Box 27, 3800 Melbourne, Australia;                |  | 
+   |  |      e-mail: peter.skands@monash.edu                                         |  | 
+   |  |                                                                              |  | 
+   |  |   The main program reference is 'An Introduction to PYTHIA 8.2',             |  | 
+   |  |   T. Sjostrand et al, Comput. Phys. Commun. 191 (2015) 159                   |  | 
+   |  |   [arXiv:1410.3012 [hep-ph]]                                                 |  | 
+   |  |                                                                              |  | 
+   |  |   The main physics reference is the 'PYTHIA 6.4 Physics and Manual',         |  | 
+   |  |   T. Sjostrand, S. Mrenna and P. Skands, JHEP05 (2006) 026 [hep-ph/0603175]  |  | 
+   |  |                                                                              |  | 
+   |  |   An archive of program versions and documentation is found on the web:      |  | 
+   |  |   http://www.thep.lu.se/Pythia                                               |  | 
+   |  |                                                                              |  | 
+   |  |   This program is released under the GNU General Public Licence version 2.   |  | 
+   |  |   Please respect the MCnet Guidelines for Event Generator Authors and Users. |  | 
+   |  |                                                                              |  | 
+   |  |   Disclaimer: this program comes without any guarantees.                     |  | 
+   |  |   Beware of errors and use common sense when interpreting results.           |  | 
+   |  |                                                                              |  | 
+   |  |   Copyright (C) 2016 Torbjorn Sjostrand                                      |  | 
+   |  |                                                                              |  | 
+   |  |                                                                              |  | 
+   |  *------------------------------------------------------------------------------*  | 
+   |                                                                                    | 
+   *------------------------------------------------------------------------------------* 
+  
+  EvtGen:Creating alias Pythia generator
+  EvtGen:Defining EvtTauolaEngine.
+  EvtGen:Setting up TAUOLA.
+  EvtGen:Using EvtGen random number engine also for Tauola++
+  
+   *************************************
+   *     TAUOLA C++ Interface v1.1.8   *
+   *-----------------------------------*
+   *                                   *
+   *   (c) Nadia    Davidson,   (1,2)  *
+   *   (c) Gizo     Nanava,     (3)    *
+   *       Tomasz   Przedzinski,(4)    *
+   *       Elzbieta Richter-Was,(2,4)  *
+   *       Zbigniew Was         (2,5)  *
+   *                                   *
+   *  1) Unimelb, Melbourne, Australia *
+   *  2)     INP, Krakow, Poland       *
+   *  3) University Bonn, Germany      *
+   *  4)      UJ, Krakow, Poland       *
+   *  5)    CERN, Geneva, Switzerland  *
+   *************************************
+  Reading SANC input files.
+  File 'table1-1.txt'  missing... skipped.
+  File 'table2-2.txt'  missing... skipped.
+  File 'table11-11.txt' missing... skipped.
+  
+  EvtGen:Initializing EvtGen
+  EvtGen:Storing known decay models
+  EvtGen:Defining EvtBcToNPi model: Bc -> V + npi and Bc -> P + npi decays
+  from A.V. Berezhnoy, A.K. Likhoded, A.V. Luchinsky: Phys.Rev.D 82, 014012 (2010) and arXiV:1104.0808.
+  EvtGen:Main decay file name  :/cvmfs/belle.cern.ch/el9/releases/release-08-03-00/decfiles/dec/DECAY_BELLE2.DEC
+  EvtGen:PDT table file name   :/tmp/basf2_3lmPWC
+  EvtGen:In readDecayFile, reading:/cvmfs/belle.cern.ch/el9/releases/release-08-03-00/decfiles/dec/DECAY_BELLE2.DEC
+  EvtGen:Warning, sum of branching fractions for B_s0 is 0.998
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for anti-B_s0 is 0.998
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for omega is 1.003
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for phi is 1.001
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for a_1+ is 1.003
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for f'_0 is 0.984
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for f_2 is 0.999
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for chi_c1 is 1.056
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for chi_c2 is 1.077
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for Upsilon(2S) is 1.000
+  EvtGen:rescaled to one! 
+  EvtGen:Warning, sum of branching fractions for Upsilon(3S) is 1.000
+  EvtGen:rescaled to one! 
+  EvtGen: EvtHypNonLepton set up maximum probability to 119.909
+  EvtGen: EvtHypNonLepton set up maximum probability to 119.909
+  EvtGen: EvtHypNonLepton set up maximum probability to 40.489
+  EvtGen: EvtHypNonLepton set up maximum probability to 40.489
+  EvtGen:Mixing type integer set to 0
+  EvtGen:Done initializing EvtGen
+[INFO] Output from EvtGen:
+  EvtGen:In readDecayFile, reading:decfiles/cocktail/Bplus/D2stenu/decay.dec
+  EvtGen:As requested, PHOTOS will be turned off.
+  EvtGen:Redefined decay of Upsilon(4S)
+  EvtGen:Redefined Partial wave for anti-D_2*0 to D*- pi+ (2)
+  EvtGen:Redefined decay of anti-D_2*0
+  EvtGen:Redefined decay of D_2*0 in CDecay
+  EvtGen:Given allowed decays, resetting minMass Upsilon(4S) 10.459 to 10.559
+ ... message repeated 1 times
+[INFO] Processed:   1 runs,      1/200000 events.
+[INFO] Processed:   1 runs,      2/200000 events.
+[INFO] Processed:   1 runs,      3/200000 events.
+[INFO] Processed:   1 runs,      4/200000 events.
+[INFO] Processed:   1 runs,      5/200000 events.
+[INFO] Processed:   1 runs,      6/200000 events.
+[INFO] Processed:   1 runs,      7/200000 events.
+[INFO] Processed:   1 runs,      8/200000 events.
+[INFO] Processed:   1 runs,      9/200000 events.
+[INFO] Processed:   1 runs,     10/200000 events.
+[INFO] Processed:   1 runs,     20/200000 events.
+[INFO] Processed:   1 runs,     30/200000 events.
+[INFO] Processed:   1 runs,     40/200000 events.
+[INFO] Processed:   1 runs,     50/200000 events.
+[INFO] Processed:   1 runs,     60/200000 events.
+[INFO] Processed:   1 runs,     70/200000 events.
+[INFO] Processed:   1 runs,     80/200000 events.
+[INFO] Processed:   1 runs,     90/200000 events.
+[INFO] Processed:   1 runs,    100/200000 events.
+[INFO] Processed:   1 runs,    200/200000 events.
+[INFO] Processed:   1 runs,    300/200000 events.
+[INFO] Processed:   1 runs,    400/200000 events.
+[INFO] Processed:   1 runs,    500/200000 events.
+[INFO] Processed:   1 runs,    600/200000 events.
+[INFO] Processed:   1 runs,    700/200000 events.
+[INFO] Processed:   1 runs,    800/200000 events.
+[INFO] Processed:   1 runs,    900/200000 events.
+[INFO] Processed:   1 runs,   1000/200000 events.
+[INFO] Processed:   1 runs,   2000/200000 events.
+[INFO] Processed:   1 runs,   3000/200000 events.
+[INFO] Processed:   1 runs,   4000/200000 events.
+[INFO] Processed:   1 runs,   5000/200000 events.
+[INFO] Processed:   1 runs,   6000/200000 events.
+[INFO] Processed:   1 runs,   7000/200000 events.
+[INFO] Processed:   1 runs,   8000/200000 events.
+[INFO] Processed:   1 runs,   9000/200000 events.
+[INFO] Processed:   1 runs,  10000/200000 events.
+[INFO] Processed:   1 runs,  11000/200000 events.
+[INFO] Processed:   1 runs,  12000/200000 events.
+[INFO] Processed:   1 runs,  13000/200000 events.
+[INFO] Processed:   1 runs,  14000/200000 events.
+[INFO] Processed:   1 runs,  15000/200000 events.
+[INFO] Processed:   1 runs,  16000/200000 events.
+[INFO] Processed:   1 runs,  17000/200000 events.
+[INFO] Processed:   1 runs,  18000/200000 events.
+[INFO] Processed:   1 runs,  19000/200000 events.
+[INFO] Processed:   1 runs,  20000/200000 events.
+[INFO] Processed:   1 runs,  21000/200000 events.
+[INFO] Processed:   1 runs,  22000/200000 events.
+[INFO] Processed:   1 runs,  23000/200000 events.
+[INFO] Processed:   1 runs,  24000/200000 events.
+[INFO] Processed:   1 runs,  25000/200000 events.
+[INFO] Processed:   1 runs,  26000/200000 events.
+[INFO] Processed:   1 runs,  27000/200000 events.
+[INFO] Processed:   1 runs,  28000/200000 events.
+[INFO] Processed:   1 runs,  29000/200000 events.
+[INFO] Processed:   1 runs,  30000/200000 events.
+[INFO] Processed:   1 runs,  31000/200000 events.
+[INFO] Processed:   1 runs,  32000/200000 events.
+[INFO] Processed:   1 runs,  33000/200000 events.
+[INFO] Processed:   1 runs,  34000/200000 events.
+[INFO] Processed:   1 runs,  35000/200000 events.
+[INFO] Processed:   1 runs,  36000/200000 events.
+[INFO] Processed:   1 runs,  37000/200000 events.
+[INFO] Processed:   1 runs,  38000/200000 events.
+[INFO] Processed:   1 runs,  39000/200000 events.
+[INFO] Processed:   1 runs,  40000/200000 events.
+[INFO] Processed:   1 runs,  41000/200000 events.
+[INFO] Processed:   1 runs,  42000/200000 events.
+[INFO] Processed:   1 runs,  43000/200000 events.
+[INFO] Processed:   1 runs,  44000/200000 events.
+[INFO] Processed:   1 runs,  45000/200000 events.
+[INFO] Processed:   1 runs,  46000/200000 events.
+[INFO] Processed:   1 runs,  47000/200000 events.
+[INFO] Processed:   1 runs,  48000/200000 events.
+[INFO] Processed:   1 runs,  49000/200000 events.
+[INFO] Processed:   1 runs,  50000/200000 events.
+[INFO] Processed:   1 runs,  51000/200000 events.
+[INFO] Processed:   1 runs,  52000/200000 events.
+[INFO] Processed:   1 runs,  53000/200000 events.
+[INFO] Processed:   1 runs,  54000/200000 events.
+[INFO] Processed:   1 runs,  55000/200000 events.
+[INFO] Processed:   1 runs,  56000/200000 events.
+[INFO] Processed:   1 runs,  57000/200000 events.
+[INFO] Processed:   1 runs,  58000/200000 events.
+[INFO] Processed:   1 runs,  59000/200000 events.
+[INFO] Processed:   1 runs,  60000/200000 events.
+[INFO] Processed:   1 runs,  61000/200000 events.
+[INFO] Processed:   1 runs,  62000/200000 events.
+[INFO] Processed:   1 runs,  63000/200000 events.
+[INFO] Processed:   1 runs,  64000/200000 events.
+[INFO] Processed:   1 runs,  65000/200000 events.
+[INFO] Processed:   1 runs,  66000/200000 events.
+[INFO] Processed:   1 runs,  67000/200000 events.
+[INFO] Processed:   1 runs,  68000/200000 events.
+[INFO] Processed:   1 runs,  69000/200000 events.
+[INFO] Processed:   1 runs,  70000/200000 events.
+[INFO] Processed:   1 runs,  71000/200000 events.
+[INFO] Processed:   1 runs,  72000/200000 events.
+[INFO] Processed:   1 runs,  73000/200000 events.
+[INFO] Processed:   1 runs,  74000/200000 events.
+[INFO] Processed:   1 runs,  75000/200000 events.
+[INFO] Processed:   1 runs,  76000/200000 events.
+[INFO] Processed:   1 runs,  77000/200000 events.
+[INFO] Processed:   1 runs,  78000/200000 events.
+[INFO] Processed:   1 runs,  79000/200000 events.
+[INFO] Processed:   1 runs,  80000/200000 events.
+[INFO] Processed:   1 runs,  81000/200000 events.
+[INFO] Processed:   1 runs,  82000/200000 events.
+[INFO] Processed:   1 runs,  83000/200000 events.
+[INFO] Processed:   1 runs,  84000/200000 events.
+[INFO] Processed:   1 runs,  85000/200000 events.
+[INFO] Processed:   1 runs,  86000/200000 events.
+[INFO] Processed:   1 runs,  87000/200000 events.
+[INFO] Processed:   1 runs,  88000/200000 events.
+[INFO] Processed:   1 runs,  89000/200000 events.
+[INFO] Processed:   1 runs,  90000/200000 events.
+[INFO] Processed:   1 runs,  91000/200000 events.
+[INFO] Processed:   1 runs,  92000/200000 events.
+[INFO] Processed:   1 runs,  93000/200000 events.
+[INFO] Processed:   1 runs,  94000/200000 events.
+[INFO] Processed:   1 runs,  95000/200000 events.
+[INFO] Processed:   1 runs,  96000/200000 events.
+[INFO] Processed:   1 runs,  97000/200000 events.
+[INFO] Processed:   1 runs,  98000/200000 events.
+[INFO] Processed:   1 runs,  99000/200000 events.
+[INFO] Processed:   1 runs, 100000/200000 events.
+[INFO] Processed:   1 runs, 101000/200000 events.
+[INFO] Processed:   1 runs, 102000/200000 events.
+[INFO] Processed:   1 runs, 103000/200000 events.
+[INFO] Processed:   1 runs, 104000/200000 events.
+[INFO] Processed:   1 runs, 105000/200000 events.
+[INFO] Processed:   1 runs, 106000/200000 events.
+[INFO] Processed:   1 runs, 107000/200000 events.
+[INFO] Processed:   1 runs, 108000/200000 events.
+[INFO] Processed:   1 runs, 109000/200000 events.
+[INFO] Processed:   1 runs, 110000/200000 events.
+[INFO] Processed:   1 runs, 111000/200000 events.
+[INFO] Processed:   1 runs, 112000/200000 events.
+[INFO] Processed:   1 runs, 113000/200000 events.
+[INFO] Processed:   1 runs, 114000/200000 events.
+[INFO] Processed:   1 runs, 115000/200000 events.
+[INFO] Processed:   1 runs, 116000/200000 events.
+[INFO] Processed:   1 runs, 117000/200000 events.
+[INFO] Processed:   1 runs, 118000/200000 events.
+[INFO] Processed:   1 runs, 119000/200000 events.
+[INFO] Processed:   1 runs, 120000/200000 events.
+[INFO] Processed:   1 runs, 121000/200000 events.
+[INFO] Processed:   1 runs, 122000/200000 events.
+[INFO] Processed:   1 runs, 123000/200000 events.
+[INFO] Processed:   1 runs, 124000/200000 events.
+[INFO] Processed:   1 runs, 125000/200000 events.
+[INFO] Processed:   1 runs, 126000/200000 events.
+[INFO] Processed:   1 runs, 127000/200000 events.
+[INFO] Processed:   1 runs, 128000/200000 events.
+[INFO] Processed:   1 runs, 129000/200000 events.
+[INFO] Processed:   1 runs, 130000/200000 events.
+[INFO] Processed:   1 runs, 131000/200000 events.
+[INFO] Processed:   1 runs, 132000/200000 events.
+[INFO] Processed:   1 runs, 133000/200000 events.
+[INFO] Processed:   1 runs, 134000/200000 events.
+[INFO] Processed:   1 runs, 135000/200000 events.
+[INFO] Processed:   1 runs, 136000/200000 events.
+[INFO] Processed:   1 runs, 137000/200000 events.
+[INFO] Processed:   1 runs, 138000/200000 events.
+[INFO] Processed:   1 runs, 139000/200000 events.
+[INFO] Processed:   1 runs, 140000/200000 events.
+[INFO] Processed:   1 runs, 141000/200000 events.
+[INFO] Processed:   1 runs, 142000/200000 events.
+[INFO] Processed:   1 runs, 143000/200000 events.
+[INFO] Processed:   1 runs, 144000/200000 events.
+[INFO] Processed:   1 runs, 145000/200000 events.
+[INFO] Processed:   1 runs, 146000/200000 events.
+[INFO] Processed:   1 runs, 147000/200000 events.
+[INFO] Processed:   1 runs, 148000/200000 events.
+[INFO] Processed:   1 runs, 149000/200000 events.
+[INFO] Processed:   1 runs, 150000/200000 events.
+[INFO] Processed:   1 runs, 151000/200000 events.
+[INFO] Processed:   1 runs, 152000/200000 events.
+[INFO] Processed:   1 runs, 153000/200000 events.
+[INFO] Processed:   1 runs, 154000/200000 events.
+[INFO] Processed:   1 runs, 155000/200000 events.
+[INFO] Processed:   1 runs, 156000/200000 events.
+[INFO] Processed:   1 runs, 157000/200000 events.
+[INFO] Processed:   1 runs, 158000/200000 events.
+[INFO] Processed:   1 runs, 159000/200000 events.
+[INFO] Processed:   1 runs, 160000/200000 events.
+[INFO] Processed:   1 runs, 161000/200000 events.
+[INFO] Processed:   1 runs, 162000/200000 events.
+[INFO] Processed:   1 runs, 163000/200000 events.
+[INFO] Processed:   1 runs, 164000/200000 events.
+[INFO] Processed:   1 runs, 165000/200000 events.
+[INFO] Processed:   1 runs, 166000/200000 events.
+[INFO] Processed:   1 runs, 167000/200000 events.
+[INFO] Processed:   1 runs, 168000/200000 events.
+[INFO] Processed:   1 runs, 169000/200000 events.
+[INFO] Processed:   1 runs, 170000/200000 events.
+[INFO] Processed:   1 runs, 171000/200000 events.
+[INFO] Processed:   1 runs, 172000/200000 events.
+[INFO] Processed:   1 runs, 173000/200000 events.
+[INFO] Processed:   1 runs, 174000/200000 events.
+[INFO] Processed:   1 runs, 175000/200000 events.
+[INFO] Processed:   1 runs, 176000/200000 events.
+[INFO] Processed:   1 runs, 177000/200000 events.
+[INFO] Processed:   1 runs, 178000/200000 events.
+[INFO] Processed:   1 runs, 179000/200000 events.
+[INFO] Processed:   1 runs, 180000/200000 events.
+[INFO] Processed:   1 runs, 181000/200000 events.
+[INFO] Processed:   1 runs, 182000/200000 events.
+[INFO] Processed:   1 runs, 183000/200000 events.
+[INFO] Processed:   1 runs, 184000/200000 events.
+[INFO] Processed:   1 runs, 185000/200000 events.
+[INFO] Processed:   1 runs, 186000/200000 events.
+[INFO] Processed:   1 runs, 187000/200000 events.
+[INFO] Processed:   1 runs, 188000/200000 events.
+[INFO] Processed:   1 runs, 189000/200000 events.
+[INFO] Processed:   1 runs, 190000/200000 events.
+[INFO] Processed:   1 runs, 191000/200000 events.
+[INFO] Processed:   1 runs, 192000/200000 events.
+[INFO] Processed:   1 runs, 193000/200000 events.
+[INFO] Processed:   1 runs, 194000/200000 events.
+[INFO] Processed:   1 runs, 195000/200000 events.
+[INFO] Processed:   1 runs, 196000/200000 events.
+[INFO] Processed:   1 runs, 197000/200000 events.
+[INFO] Processed:   1 runs, 198000/200000 events.
+[INFO] Processed:   1 runs, 199000/200000 events.
+[INFO] Processed:   1 runs, 200000/200000 events.
+[INFO] Writing NTuple reco
+[INFO] ===Error Summary================================================================
+[WARNING] Existing object 'ParticlesToMCParticles' (durability: event) has different persistency type than requested. Changing to c_WriteOut.  { module: MCMatch_B+:reco }
+[INFO] ================================================================================
+[WARNING] in total, 1 warnings occurred during processing
+=====================================================================================
+Name                      |      Calls | Memory(MB) |    Time(s) |     Time(ms)/Call
+=====================================================================================
+EventInfoSetter           |     200001 |         -0 |       3.00 |    0.02 +-   0.00
+EvtGenInput               |     200000 |       -147 |    1111.06 |    5.56 +-   5.83
+MCDecayFinder_B+:reco     |     200000 |         -6 |      24.12 |    0.12 +-   0.03
+MCMatch_B+:reco           |     200000 |         -0 |       3.12 |    0.02 +-   0.00
+VariablesToNtuple_B+:reco |     200000 |         25 |      18.06 |    0.09 +-   2.94
+Progress                  |     200000 |         -1 |       2.97 |    0.01 +-   0.00
+=====================================================================================
+Total                     |     200001 |       -136 |    1186.15 |    5.93 +-   6.54
+=====================================================================================
+
+
+
+
+ ***************************************************************************
+ *                         *****TAUOLA LIBRARY: VERSION 2.9 ******         *
+ *                         ***********October 2011 ***************         *
+ *                         **AUTHORS: S.JADACH, Z.WAS*************         *
+ *                         **R. DECKER, M. JEZABEK, J.H.KUEHN*****         *
+ *                         **AVAILABLE FROM: www.cern.ch/wasm****          *
+ *                         ***** PUBLISHED IN COMP. PHYS. COMM.***         *
+ *                         0: Physics initialization  CLEO collab          *
+ *                          see Alain Weinstein www home page:             *
+ *                         http://www.cithep.caltech.edu/~ajw/             *
+ *                         /korb_doc.html#files                            *
+ *                         1: Physics initialization RChL of:              *
+ *                          O. Shekhovtsova, T. Przedzinski,               *
+ *                          P. Roig and Z. Was                             *
+ *                          IFJPAN-2013-5, UAB-FT-731                      *
+ *                         *******CPC 76 (1993) 361          *****         *
+ *                         **5 or more pi dec.: precision limited          *
+ *                         ****DEKAY ROUTINE: INITIALIZATION******         *
+ *                   0     JAK1   = DECAY MODE TAU+                        *
+ *                   0     JAK2   = DECAY MODE TAU-                        *
+ ***************************************************************************
+
+ *                   1     IVER   = hadronic current version           *
+  RANMAR INITIALIZED:   54217137           0         0
+
+ ***************************************************************************
+
+  In F3pi: chpt + 1 resonance + 2 resonance (RchT)
+  KORB: rho/rhop -> pi-pi0 mixing:
+  KORB: rho   =  0.769900024      0.151199996    
+  KORB: rhop  =   1.37000000      0.509999990     -0.109999999    
+  KORB: K*/K*prime -> Kpi mixing:
+  KORB: kstp  =   1.70000005      0.234999999      -3.79999988E-02
+  KORB: a1/a1prime -> 3pi, KKpi mixing:
+  KORB: a1    =   1.27499998      0.699999988    
+  KORB: a1prim=   1.46099997      0.250000000       0.00000000    
+  KORB: K1A/K1B -> Kpipi mixing:
+  KORB: K1A   =   1.26999998       9.00000036E-02   1.00000000    
+  KORB: K1B   =   1.40199995      0.173999995      0.800000012    
+  KORB: rho/rhop/rhopp -> 4pi mixing:
+  KORB: rho   =  0.769900024      0.151199996    
+  KORB: rhopp =   1.46500003      0.310000002     -0.109999999    
+  KORB: rhoppp=   1.70000005      0.234999999     -0.109999999    
+  KORB: 3PI-PI0 PARAMS:   0.00000000      0.124200001      0.160400003      0.271100014      0.444299996    
+  KORB: PI-3PI0 PARAMS:   0.00000000       1.00000000    

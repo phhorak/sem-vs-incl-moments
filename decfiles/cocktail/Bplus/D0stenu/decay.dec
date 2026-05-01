@@ -1,0 +1,19 @@
+noPhotos
+
+# B+ -> anti-D_0*0 e+ nu (LLSW), anti-D_0*0 -> D- pi+  (PHSP, S-wave)
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+1.0  anti-D_0*0  e+  nu_e   LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B-sig
+
+Decay anti-D_0*0
+1.0  D-  pi+   PHSP;
+Enddecay
+CDecay D_0*0
+
+End

@@ -1,0 +1,27 @@
+# Descriptor: [B- -> D'_10 l- nu, D'_10 -> D*0 eta] gap mode (resonant)
+# NickName: Bu_Dp1lnu_DstEta_gapmodes
+# Documentation: Gap mode study; D'_1 -> D* eta using wide PHSP sub-decay.
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260429
+
+Alias Dp1eta0sig D'_10
+Alias anti-Dp1eta0sig anti-D'_10
+ChargeConj Dp1eta0sig anti-Dp1eta0sig
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 Dp1eta0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 Dp1eta0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B+sig
+
+Decay Dp1eta0sig
+1.0 D*0 eta PHSP;
+Enddecay
+CDecay anti-Dp1eta0sig
+
+End

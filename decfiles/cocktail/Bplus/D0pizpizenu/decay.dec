@@ -1,0 +1,14 @@
+noPhotos
+
+# B+ -> anti-D0 pi0 pi0 e+ nu (PHSP)
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+1.0  anti-D0    pi0  pi0  e+  nu_e   PHSP;
+Enddecay
+CDecay B-sig
+
+End

@@ -1,0 +1,30 @@
+# Descriptor: [B- -> X(D_s K) l- nu] dummy-resonant gap mode, e and mu, cc
+# NickName: Bu_DsKlnu_dummyres_gapmodes
+# Documentation: B -> D_s K l nu via wide dummy resonance (m=2.8 GeV, w=3.0 GeV).
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260429
+
+Alias DsK0sig D_0*0
+Alias anti-DsK0sig anti-D_0*0
+ChargeConj DsK0sig anti-DsK0sig
+
+Particle DsK0sig      2.8 3.0
+Particle anti-DsK0sig 2.8 3.0
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 DsK0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 DsK0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B+sig
+
+Decay DsK0sig
+1.0 D_s- K+ PHSP;
+Enddecay
+CDecay anti-DsK0sig
+
+End
