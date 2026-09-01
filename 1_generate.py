@@ -33,7 +33,9 @@ dec_gap      = cfg["paths"]["decfiles_gap_modes"]
 g = cfg["generation"]
 
 cocktail_modes = g["cocktail_modes"]
-gap_modes_keys = [f"gap_modes/Bplus/{m}" for m in g["gap_modes"]]
+# Each gap-mode decfile already produces a 50/50 e/mu split per event (see the two-pass
+# truth matching in _generate_and_reco.py), so only the charge axis is needed here.
+gap_modes_keys = [f"gap_modes/{charge}/{m}" for charge in ("Bplus", "B0") for m in g["gap_modes"]]
 all_modes = cocktail_modes + gap_modes_keys
 
 if args.mode:
@@ -44,8 +46,8 @@ if args.mode:
 
 def _dec_file(mode: str) -> str:
     if mode.startswith("gap_modes/"):
-        bare = mode[len("gap_modes/Bplus/"):]
-        return os.path.join(dec_gap, "Bplus", bare, "decay.dec")
+        rest = mode[len("gap_modes/"):]  # e.g. "Bplus/D2stDeta" or "B0/D2stDeta"
+        return os.path.join(dec_gap, rest, "decay.dec")
     return os.path.join(dec_cocktail, mode, "decay.dec")
 
 if not args.submit:
@@ -55,7 +57,7 @@ if not args.submit:
         sys.exit(1)
     mode = all_modes[0]
     dec  = _dec_file(mode)
-    out  = os.path.join(out_root, mode.replace("gap_modes/Bplus/", "gap_modes/"), "reco.root")
+    out  = os.path.join(out_root, mode, "reco.root")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     cmd = f"basf2 {gen_script} -- --dec_file {dec} --output {out} --mode {mode} --nevents {g['n_events_per_job']}"
     print(cmd)
@@ -73,9 +75,8 @@ for mode in all_modes:
     if not os.path.exists(dec):
         print(f"warning: {dec} not found — skipping {mode}")
         continue
-    mode_key = mode.replace("gap_modes/Bplus/", "gap_modes/")
-    out_dir  = os.path.join(out_root, mode_key)
-    mlog_dir = os.path.join(log_dir, mode_key)
+    out_dir  = os.path.join(out_root, mode)
+    mlog_dir = os.path.join(log_dir, mode)
     os.makedirs(mlog_dir, exist_ok=True)
     if not args.dry_run:
         os.makedirs(out_dir, exist_ok=True)

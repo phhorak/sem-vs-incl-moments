@@ -12,6 +12,7 @@ generation:
   queue: s
   batch_output_dir: /ghi/fs01/belle2/bdata/users/phorak/sigmc/evtgen
   cocktail_modes:
+    # B+, electron (original simplification)
     - Bplus/Dstenu
     - Bplus/Denu
     - Bplus/D1enu
@@ -32,25 +33,65 @@ generation:
     - Bplus/DsKenu
     - Bplus/D0etaenu
     - Bplus/Dst0etaenu
-    # Uncomment B0 modes for full isospin sample:
-    # - B0/Dstenu
-    # - B0/Denu
-    # - B0/D1enu
-    # - B0/D0stenu
-    # - B0/Dp1enu
-    # - B0/D2stenu
-    # - B0/Dst0pienu
-    # - B0/Dstpi0enu
-    # - B0/D0pienu
-    # - B0/Dpi0enu
-    # - B0/Dpipipenu
-    # - B0/D0pipipzenu
-    # - B0/Dpizpizenu
-    # - B0/Dstpipipenu
-    # - B0/Dst0pipipzenu
-    # - B0/Dstpizpizenu
-    # - B0/Detaenu
-    # - B0/Dstetaenu
+    # B+, muon (full lepton-flavor generalization)
+    - Bplus/Dstmunu
+    - Bplus/Dmunu
+    - Bplus/D1munu
+    - Bplus/D0stmunu
+    - Bplus/Dp1munu
+    - Bplus/D2stmunu
+    - Bplus/Dstmpimunu
+    - Bplus/Dst0pi0munu
+    - Bplus/Dmpimunu
+    - Bplus/D0pi0munu
+    - Bplus/D0pipipmunu
+    - Bplus/Dmpipizmunu
+    - Bplus/D0pizpizmunu
+    - Bplus/Dst0pipipmunu
+    - Bplus/Dstmpipizmunu
+    - Bplus/Dst0pizpizmunu
+    - Bplus/DsstkKmunu
+    - Bplus/DsKmunu
+    - Bplus/D0etamunu
+    - Bplus/Dst0etamunu
+    # B0, electron (full isospin generalization)
+    - B0/Dstenu
+    - B0/Denu
+    - B0/D1enu
+    - B0/D0stenu
+    - B0/Dp1enu
+    - B0/D2stenu
+    - B0/Dst0pienu
+    - B0/Dstpi0enu
+    - B0/D0pienu
+    - B0/Dpi0enu
+    - B0/Dpipipenu
+    - B0/D0pipipzenu
+    - B0/Dpizpizenu
+    - B0/Dstpipipenu
+    - B0/Dst0pipipzenu
+    - B0/Dstpizpizenu
+    - B0/Detaenu
+    - B0/Dstetaenu
+    # B0, muon (full isospin + lepton-flavor generalization)
+    - B0/Dstmunu
+    - B0/Dmunu
+    - B0/D1munu
+    - B0/D0stmunu
+    - B0/Dp1munu
+    - B0/D2stmunu
+    - B0/Dst0pimunu
+    - B0/Dstpi0munu
+    - B0/D0pimunu
+    - B0/Dpi0munu
+    - B0/Dpipipmunu
+    - B0/D0pipipzmunu
+    - B0/Dpizpizmunu
+    - B0/Dstpipipmunu
+    - B0/Dst0pipipzmunu
+    - B0/Dstpizpizmunu
+    - B0/Detamunu
+    - B0/Dstetamunu
   gap_modes:
     - D2stDeta
     - DummyDeta
@@ -58,6 +99,11 @@ generation:
     - Dp1Deta
     - DsKenu
     - LcPenu
+    - D0stDeta
+    - D1_2550Deta
+    - D1Dgamma
+    - D0pipipipenu
+    - Dst0pipipipenu
 
 digitize:
   dsk_plot: inputs/digitize_plots/dsk.png
@@ -76,12 +122,21 @@ reweight:
   lcp_mass_max: 4.6
   lcp_nbins: 40
   lcp_max_ratio: 10.0
+  # One job per cocktail ROOT file (76 total) -- bundling multiple files per job
+  # exceeds the queue's 4GB memory limit (OOM, exit 137).
+  cocktail_n_jobs: 76
 
 average:
+  method: polynomial        # "gls": one free parameter per (key, cut) truth point.
+                             # "polynomial": joint per-key polynomial basis, so the averaged
+                             # curve is smooth in the cut variable. Both solve one joint GLS
+                             # against the full cross-experiment/cross-moment covariance.
+  poly_degree: 4            # polynomial degree (only used when method: polynomial)
   corr_same_exp_same_var: 0.0
   corr_same_exp_diff_var: 0.0
   corr_diff_exp: 0.0
   inflate_if_incompatible: true
+  exclude_sem: true        # if true, drop CDF and DELPHI (sum-of-exclusive measurements)
   exclude_experiments:
     #- delphi
     #- cleo
@@ -89,7 +144,7 @@ average:
 
 plots:
   exp_data_tar: inputs/sem.tar.gz
-  n_toys: 50
+  n_toys: 5
   toy_seed: 42
   el_cuts_min: 0.0
   el_cuts_max: 1.7
@@ -97,27 +152,116 @@ plots:
   q2_cuts_min: 0.0
   q2_cuts_max: 10.0
   q2_cuts_n: 45
-  n_bootstrap: 200
+  n_bootstrap: 3
   weight_col: total_weight
 
 
 fit:
-  mode: both      # "simultaneous" or "individual" or "both"
+  mode: both      # "simultaneous", "individual", "unconstrained", or "both"
   include_cocktail_dsk: true  # if false, zero the Ds(*)K component in the SM cocktail in step 6
   gap_modes:              # gap modes to include; subset of generation.gap_modes
     - D2stDeta
     - DummyDeta
     - Dp1DstEta
     - Dp1Deta
-    #- DsKenu
+    - DsKenu
     - LcPenu
+    - D0stDeta
+    - D1_2550Deta
+    - D1Dgamma
+    - D0pipipipenu
+    - Dst0pipipipenu
   el_cut_min: 0.0
   mx_upper_cut: null      # optional event-level cut in step 6: keep only events with M_X < this value, or put "null"
-  n_br_nuisance: 30
-  n_ff_nuisance: 200
+  n_br_nuisance: 15
+  n_ff_nuisance: 50
   theta_br_bound: 10.0
   theta_ff_bound: 10.0
   delta_chi2: 2.71        # 95% CL threshold for profile likelihood scan
-  mu_total_scan_max: 2.0
-  n_scan: 1000
-  br_ref: 0.018           # reference BF for mu normalization (mu=1 corresponds to BR=br_ref)
+  mu_total_scan_max: 1.2  # mu=1 now means BR_REF (see below): "one mode explains the whole gap"
+  n_scan: 200
+  # BR_REF is derived by 6_fit.py from compute_bf_gap() (not a fixed constant), so mu=1
+  # always means "the full measured inclusive-minus-exclusive gap".
+  mcmc_n_burn: 500
+  mcmc_n_steps: 3000
+  mcmc_n_walkers: null    # null = auto (max(128, 4*ndim))
+
+hausdorff_data:
+  grid_size: 100
+  mx_support: [3.2, 16.0]   # Mx² [GeV²]: from support scan
+  el_support: [0.0, 2.3]
+  q2_support: [0.0, 12.5]
+  boundary_alpha:      # exponent at t=0: f(t) ~ t^alpha as t->0 (0=no constraint)
+    mx2: 0
+    el: 0
+    q2: 0
+  boundary_beta:       # exponent at t=1: f(t) ~ (1-t)^beta as t->1 (0=no constraint)
+    mx2: 1
+    el: 1
+    q2: 1
+  max_el_cut: 1.5      # exclude El (and Mx) thresholds >= this value
+  max_q2_cut: 7.0      # exclude Q2 thresholds >= this value
+
+hausdorff_toy:
+  gap_mode: D2stDeta
+  # n_toys/n_toys_band/n_toy_chunks temporarily lowered (full-precision values: 1140/5000/500)
+  # for faster turnaround; restore once validated.
+  n_toys: 300
+  n_moments: [2, 3, 4, 5]
+  grid_size: 2000
+  n_toys_band: 1000
+  n_toy_chunks: 60
+  bounds_sigma: 0.0
+  incl_sigma: 0.0
+  el_cuts: [0.0, 0.6, 1.0]
+  q2_cuts: [1.5, 3.0, 6.0]
+  mx_support: [5.82, 25.60]   # Mx² [GeV²]: actual D2stDeta MC truth endpoints (x0.999/x1.001 margin)
+  el_support: [0.0, 2.06]     # actual D2stDeta MC truth endpoints
+  q2_support: [0.0, 8.00]     # actual D2stDeta MC truth endpoints
+  seed: 42
+  boundary_alpha:      # exponent at t=0: f(t) ~ t^alpha as t->0 (0=no constraint)
+    mx2: 1
+    el: 1               # low-El constraint
+    q2: 0
+  boundary_beta:       # exponent at t=1: f(t) ~ (1-t)^beta as t->1 (0=no constraint)
+    mx2: 0
+    el: 1
+    q2: 1               # high-q^2 constraint
+  # "all_soft": extra run-label using a Gaussian-relaxed per-threshold MaxEnt dual, so a toy
+  # whose noisy moments fall outside the achievable polytope degrades instead of failing outright.
+  soft_all_enable: true
+
+systematics:
+  enable:
+    incl_moments: true
+    ff: true
+    bf_mode: true
+    bf_gap: false        # contributes ~0% (cancels exactly, see SYSTEMATICS_NOTES); off for now
+  run_combined: true
+  # bf_incl must sum the same four bookkeeping terms as bf_sem_computed (lib/systematics.py):
+  # bf_incl = 2*B(B+->Xc l nu) + 2*B(B0->Xc l nu) = 2*11.05% + 2*10.27% = 42.64%
+  # (B+e, B+mu, B0e, B0mu; LFU-assumed e/mu equal). Using a single physical inclusive BR here
+  # instead breaks compute_bf_gap() (bf_gap goes negative).
+  # bf_incl_unc = sqrt((2*0.16%)^2 + (2*0.15%)^2) = 0.44% -- e/mu pairs are 100% correlated
+  # (linear), B+/B0 are independent measurements (quadrature).
+  # Source: HFLAV 2023 (arXiv:2411.18639), same reference as _BF_TABLE in 3_reweight.py.
+  bf_incl: 0.4264
+  bf_incl_unc: 0.0044
+
+# Joint multi-threshold MaxEnt (lib/joint_maxent.py): fits all thresholds' moments together
+# on one global density, replacing legacy per-threshold MaxEnt + stitching. Opt-in; legacy path
+# still runs when disabled. El/Q2 only (Mx keeps single-best-threshold).
+joint_maxent:
+  enable: false
+  observables: [El]    # Q2 continuity penalty not yet usable on data (see known limitations doc)
+  sigma_rel: 0.03
+  gamma_value: 30.0    # continuity weights for 7_hausdorff_toy.py's formulation
+  gamma_slope: 30.0
+  gammas_conditional:  # 8_hausdorff_data.py's formulation: 0 performs best against real toy noise
+    El: [0.0, 0.0]
+    Q2: [0.0, 0.0]
+  n_moments:
+    El: 5              # 8_/data capped at N<=4 (only 3 raw moments tabulated experimentally)
+    Q2: 3              # N=5 unstable for this steeply-falling spectrum
+  el_cuts: [0.0, 0.4, 0.8, 1.2, 1.6]
+  q2_cuts: [0.5, 2.0, 3.5, 5.0, 6.5]

@@ -8,11 +8,9 @@ Reads:  output/4/experimental_average.json  (data points + errors)
 Outputs:
   output/6/fit_results.json
   output/6/fit_results_individual.tex
-  output/6/fit_results_combined.tex
-  output/6/fit_results_combined_top_pulls.tex
-  figures/6/profile_scan.png
+  output/6/fit_results_unconstrained.tex
   figures/6/postfit_individual_{mode}.png  (one per gap mode)
-  figures/6/postfit_combined.png
+  figures/6/postfit_unconstrained.png
 """
 import argparse
 import json
@@ -20,7 +18,6 @@ import os
 import sys
 import time
 from pathlib import Path
-import plothist
 
 # Avoid thread-spawn failures on constrained batch/login nodes.
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
@@ -36,6 +33,11 @@ import numpy as np
 import pandas as pd
 import yaml
 from scipy.optimize import minimize
+try:
+    import emcee as _emcee
+    _EMCEE_AVAILABLE = True
+except ImportError:
+    _EMCEE_AVAILABLE = False
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", default="config.yaml")
@@ -47,7 +49,7 @@ with open(args.config) as _f:
 _ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(_ROOT / "lib"))
 
-from lib.gap_modes import GAP_MODES, GAP_MODES_BY_NAME
+from lib.gap_modes import GAP_MODES
 
 out6 = Path(cfg["paths"]["output"]) / "6"
 fig6 = Path(cfg["paths"]["figures"]) / "6"
@@ -65,7 +67,26 @@ N_FF_MAX        = int(fc.get("n_ff_nuisance", 200))
 DELTA_CHI2      = float(fc.get("delta_chi2", 2.71))
 MU_SCAN_MAX     = float(fc.get("mu_total_scan_max", 10.0))
 N_SCAN          = int(fc.get("n_scan", 400))
-BR_REF          = float(fc.get("br_ref", 0.018))
+from lib import systematics as syst
+
+# BR_REF = bf_gap_central: mu=1 now corresponds to the full measured inclusive-minus-
+# exclusive gap (same compute_bf_gap() convention as 7_hausdorff_toy.py/8_hausdorff_data.py,
+# derived fresh from the cocktail's per-mode BFs, not a hardcoded constant), so a single
+# mode's mu_total_scan_max=1.2 comfortably covers "this one mode explains the whole gap"
+# instead of pegging at the old br_ref=0.018 boundary (1.2 x 1.8% = 2.16%, far short of
+# the ~6.26% measured gap) before the profile scan ever finds an upper limit.
+_sysc        = cfg.get("systematics", {})
+_bf_incl     = float(_sysc.get("bf_incl", 0.1105))
+_bf_incl_unc = float(_sysc.get("bf_incl_unc", 0.0016))
+_df_bf = pd.read_parquet(Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet",
+                          columns=["decay_name", "bf", "bf_unc"])
+_bf_sem_computed, _bf_gap_central, _sigma_bf_gap = syst.compute_bf_gap(_df_bf, _bf_incl, _bf_incl_unc)
+del _df_bf
+BR_REF = _bf_gap_central
+print(f"  BR_REF = bf_gap_central = {100*BR_REF:.3f}%  (sigma={100*_sigma_bf_gap:.3f}%)")
+MCMC_N_BURN     = int(fc.get("mcmc_n_burn", 500))
+MCMC_N_STEPS    = int(fc.get("mcmc_n_steps", 3000))
+MCMC_N_WALKERS  = fc.get("mcmc_n_walkers", None)  # None = auto (4*ndim, min 128)
 
 KEYS = ["mx_1", "mx_2", "mx_3", "el_1", "el_2", "el_3", "q2_1", "q2_2", "q2_3"]
 YLABELS_RAW = {
@@ -225,9 +246,18 @@ def _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN):
     return chi2, np.concatenate([grad_mu, grad_th])
 
 
-def _nearest_psd(cov, eps=1e-12):
-    w, v = np.linalg.eigh(cov); wc = np.clip(w, eps, None)
-    out  = (v * wc) @ v.T; return out, bool(np.any(wc != w))
+def _nearest_psd(cov, rel_eps=1e-8):
+    """Clip eigenvalues at rel_eps * (largest eigenvalue), not a fixed absolute
+    floor: a covariance built by propagating a low-rank fit (e.g. the joint
+    polynomial average in 4_average.py, where a handful of basis coefficients
+    determine many output points) is *exactly* rank-deficient by construction,
+    so most of its small eigenvalues are pure float64 roundoff clustered near
+    the matrix's own scale, not close to any fixed absolute value like 1e-12."""
+    w, v = np.linalg.eigh(cov)
+    eps = rel_eps * max(float(np.max(w)), 0.0)
+    wc = np.clip(w, eps, None)
+    out = (v * wc) @ v.T
+    return out, bool(np.any(wc != w))
 
 
 def _extract_ul(mu_grid, chi2_grid, i_best):
@@ -276,12 +306,6 @@ def _extract_interval_at_delta(x_grid, chi2_grid, i_best, delta=1.0):
     return lo, hi, err_lo, err_hi
 
 
-def _fmt_pm(lo, hi, nd=3):
-    slo = f"{lo:.{nd}f}" if np.isfinite(lo) else "n/a"
-    shi = f"{hi:.{nd}f}" if np.isfinite(hi) else "n/a"
-    return f"-{slo}/+{shi}"
-
-
 def _safe_tex(s):
     return str(s).replace("_", r"\_")
 
@@ -307,47 +331,32 @@ def _write_individual_results_tex(path, results_by_mode, loaded_meta):
     path.write_text("\n".join(lines))
 
 
-def _write_combined_results_tex(path, sim_result):
-    lines = [
-        r"\begin{tabular}{lrr}",
-        r"\hline",
-        r"Quantity & Value & Notes \\",
-        r"\hline",
-        rf"$\hat{{\mu}}_{{\mathrm{{total}}}}$ & {sim_result['mu_total_best']:.3f} & best fit \\",
-        rf"$\mu_{{95\%}}$ & {(sim_result['mu_total_ul_95'] if sim_result['mu_total_ul_95'] is not None else float('nan')):.3f} & profile UL \\",
-        rf"$\hat{{\mathcal{{B}}}}_{{\mathrm{{total}}}}[\%]$ & {sim_result['br_total_best_pct']:.3f} & at best fit \\",
-        rf"$\mathcal{{B}}_{{95\%}}[\%]$ & {(sim_result['br_total_ul_95_pct'] if sim_result['br_total_ul_95_pct'] is not None else float('nan')):.3f} & from $\mu_{{95\%}}$ \\",
-        r"\hline",
-        r"\end{tabular}",
-        "",
-        r"\vspace{0.5em}",
-        "",
-        r"\begin{tabular}{lrrr}",
-        r"\hline",
-        r"Mode & $\hat{\mu}_k$ & $\hat{\mathcal{B}}_k[\%]$ & $1\sigma$ on $\mu_k$ \\",
-        r"\hline",
-    ]
-    for mode, entry in sim_result["per_mode"].items():
-        elo = entry.get("mu_k_err_lo_1sigma")
-        ehi = entry.get("mu_k_err_hi_1sigma")
-        pm = _fmt_pm(elo if elo is not None else np.nan, ehi if ehi is not None else np.nan)
-        lines.append(
-            rf"{_safe_tex(mode)} & {entry['mu_k']:.3f} & {entry['br_k_pct']:.3f} & ${pm}$ \\"
-        )
-    lines += [r"\hline", r"\end{tabular}", ""]
-    path.write_text("\n".join(lines))
-
-
-def _write_top_pulls_tex(path, top_pulls):
-    lines = [
-        r"\begin{tabular}{lrr}",
-        r"\hline",
-        r"Nuisance & Pull $\theta$ & $|\theta|$ \\",
-        r"\hline",
-    ]
-    for row in top_pulls:
-        th = float(row["theta"])
-        lines.append(rf"{_safe_tex(row['name'])} & {th:.3f} & {abs(th):.3f} \\")
+def _write_unconstrained_results_tex(path, unc_result):
+    has_bayes = any("br_k_bayes_ul_95_pct" in e for e in unc_result["per_mode"].values())
+    if has_bayes:
+        lines = [
+            r"\begin{tabular}{lrrr}",
+            r"\hline",
+            r"Mode & $\hat{\mathcal{B}}_k[\%]$ & $\mathcal{B}_{k,95\%}^{\rm prof}[\%]$ & $\mathcal{B}_{k,95\%}^{\rm Bayes}[\%]$ \\",
+            r"\hline",
+        ]
+        for mode, entry in unc_result["per_mode"].items():
+            ul_p = entry.get("br_k_ul_95_pct")
+            ul_b = entry.get("br_k_bayes_ul_95_pct")
+            ul_p_str = f"{ul_p:.3f}" if ul_p is not None else "---"
+            ul_b_str = f"{ul_b:.3f}" if ul_b is not None else "---"
+            lines.append(rf"{_safe_tex(mode)} & {entry['br_k_pct']:.3f} & {ul_p_str} & {ul_b_str} \\")
+    else:
+        lines = [
+            r"\begin{tabular}{lrr}",
+            r"\hline",
+            r"Mode & $\hat{\mathcal{B}}_k[\%]$ & $\mathcal{B}_{k,95\%}[\%]$ \\",
+            r"\hline",
+        ]
+        for mode, entry in unc_result["per_mode"].items():
+            ul = entry.get("br_k_ul_95_pct")
+            ul_str = f"{ul:.3f}" if ul is not None else "---"
+            lines.append(rf"{_safe_tex(mode)} & {entry['br_k_pct']:.3f} & {ul_str} \\")
     lines += [r"\hline", r"\end{tabular}", ""]
     path.write_text("\n".join(lines))
 
@@ -388,10 +397,10 @@ def _cov_from_average_payload(payload):
     pt_defs = cov_block.get("points", [])
     cov_list = cov_block.get("cov", [])
     if not pt_defs or not cov_list:
-        return None
+        return None, None
     cov_full = np.asarray(cov_list, dtype=float)
     if cov_full.ndim != 2 or cov_full.shape[0] != cov_full.shape[1] or cov_full.shape[0] != len(pt_defs):
-        return None
+        return None, None
     idx_map = {
         _point_key(p.get("key"), p.get("cut")): i
         for i, p in enumerate(pt_defs)
@@ -401,21 +410,58 @@ def _cov_from_average_payload(payload):
         cut = cuts_by_key[key][i_cut]
         k = _point_key(key, cut)
         if k not in idx_map:
-            return None
+            return None, None
         want.append(idx_map[k])
     want = np.asarray(want, dtype=int)
-    return cov_full[np.ix_(want, want)]
+    rank_full = cov_block.get("rank")
+    # Subsetting rows/cols of a matrix can only lower its rank, never raise it, so this
+    # remains a valid (if occasionally loose) exact rank bound after selecting `want`.
+    rank = min(int(rank_full), len(want)) if rank_full is not None else None
+    return cov_full[np.ix_(want, want)], rank
 
 
-cov = _cov_from_average_payload(avg_payload)
+def _rank_truncated_pinv(cov, rank):
+    """Exact-rank pseudo-inverse: keep only the `rank` largest-magnitude eigenvalues
+    and invert those, hard-zeroing everything else. Use this instead of a magnitude
+    -based rcond when the true rank is known analytically (e.g. average_raw_cov from
+    the joint polynomial average in 4_average.py, which is exactly rank-deficient by
+    construction -- eigenvalues past the true rank are pure float64 roundoff, and a
+    heuristic rcond threshold can't reliably separate that roundoff from genuinely
+    small-but-real eigenvalues sitting nearby in magnitude)."""
+    w, v = np.linalg.eigh(cov)
+    order = np.argsort(np.abs(w))[::-1]
+    keep = order[:rank]
+    w_keep, v_keep = w[keep], v[:, keep]
+    # A rank-truncated PSD covariance should keep only genuinely positive eigenvalues;
+    # a non-positive value surviving the top-|w| cut would mean `rank` overcounts this
+    # particular matrix's real positive eigenvalues -- drop it rather than invert a
+    # near-zero/negative value into a spurious huge precision weight.
+    pos = w_keep > 0.0
+    w_keep, v_keep = w_keep[pos], v_keep[:, pos]
+    cov_psd = (v_keep * w_keep) @ v_keep.T
+    inv = (v_keep * (1.0 / w_keep)) @ v_keep.T
+    return cov_psd, inv
+
+
+cov, cov_rank = _cov_from_average_payload(avg_payload)
 if cov is None:
     raise RuntimeError(
         "average_raw_cov missing or not aligned with fit points. "
         "Run 4_average.py first and ensure output/4/experimental_average.json contains aligned average_raw_cov."
     )
 
-cov, _psd_fix = _nearest_psd(cov)
-inv_cov = np.linalg.pinv(cov, rcond=1e-12)
+if cov_rank is not None and cov_rank < cov.shape[0]:
+    cov, inv_cov = _rank_truncated_pinv(cov, cov_rank)
+    print(f"  average_raw_cov: exact-rank truncation to rank={cov_rank} (of {cov.shape[0]} points)")
+else:
+    cov, _psd_fix = _nearest_psd(cov)
+    # rcond relative to the eps used in _nearest_psd above -- must not be tighter than
+    # that floor, or pinv will re-invert the same near-zero noise directions we just
+    # clipped (see _nearest_psd docstring: the raw/central average covariance can be
+    # exactly rank-deficient when produced by a low-rank fit like the joint polynomial
+    # average, so a 1e-12 rcond is far too permissive and amplifies float64 roundoff
+    # into artificial precision weights of O(1e10), inflating chi2 by orders of magnitude).
+    inv_cov = np.linalg.pinv(cov, rcond=1e-8)
 
 # ── Load SM cocktail ──────────────────────────────────────────────────────────
 
@@ -468,8 +514,7 @@ if INCLUDE_DSK_IN_SM:
         if not row.empty and dn not in br_names:
             br_names.append(dn)
 
-nuisance_names, nuisance_types, dW_cols, dN_cols = [], [], [], []
-dw_cols = []
+nuisance_names, nuisance_types, dw_cols = [], [], []
 br_theta_bounds = []
 for dname in br_names:
     dw = w0_sm * rel_bf * (decay_arr == dname).astype(float)
@@ -484,6 +529,8 @@ for dname in br_names:
 FF_DECAYS = {
     "Bp_Denu", "Bp_Dstenu", "Bp_D1enu", "Bp_D0stenu", "Bp_Dp1enu", "Bp_D2stenu",
     "B0_Denu", "B0_Dstenu", "B0_D1enu", "B0_D0stenu", "B0_Dp1enu", "B0_D2stenu",
+    "Bp_Dmunu", "Bp_Dstmunu", "Bp_D1munu", "Bp_D0stmunu", "Bp_Dp1munu", "Bp_D2stmunu",
+    "B0_Dmunu", "B0_Dstmunu", "B0_D1munu", "B0_D0stmunu", "B0_Dp1munu", "B0_D2stmunu",
 }
 ff_added = 0
 for dname in sorted(set(decay_arr) & FF_DECAYS):
@@ -522,7 +569,7 @@ print(f"  points={len(pts)}, nuisances={M} (BR={n_br}, FF={M-n_br})")
 # ── Load gap modes ────────────────────────────────────────────────────────────
 
 active_meta = [m for m in GAP_MODES if m["mode"] in ACTIVE_MODES]
-Wg_list, Ng_list, loaded_meta = [], [], []
+Wg_list, Ng_list, loaded_meta, gap_arrays = [], [], [], []
 for meta in active_meta:
     pq = Path(cfg["paths"]["output"]) / "3" / f"{meta['mode']}.parquet"
     if not pq.exists():
@@ -531,10 +578,12 @@ for meta in active_meta:
     if "total_weight" not in gdf.columns:
         gdf["total_weight"] = gdf["weight"] * gdf["mc_weight"] * gdf["ff_weight"]
     mx2_g = np.square(gdf["Mx"].to_numpy(dtype=float))
-    Wg, Ng = _compute_WN(mx2_g, gdf["El_B"].to_numpy(dtype=float),
-                         gdf["q2"].to_numpy(dtype=float),
-                         gdf["total_weight"].to_numpy(dtype=float), pts, cuts_by_key)
+    el_g  = gdf["El_B"].to_numpy(dtype=float)
+    q2_g  = gdf["q2"].to_numpy(dtype=float)
+    w_g   = gdf["total_weight"].to_numpy(dtype=float)
+    Wg, Ng = _compute_WN(mx2_g, el_g, q2_g, w_g, pts, cuts_by_key)
     Wg_list.append(Wg); Ng_list.append(Ng); loaded_meta.append(meta)
+    gap_arrays.append((mx2_g, el_g, q2_g, w_g))
 
 if not loaded_meta:
     raise RuntimeError("No gap mode parquet files found.")
@@ -546,10 +595,9 @@ theta_bounds = (br_theta_bounds + [(-10., 10.)] * (M - n_br))
 
 # ── Run fits ──────────────────────────────────────────────────────────────────
 
-print(f"[2/5] Running both fit modes (config mode={FIT_MODE}) …")
-mu_grid = np.linspace(0., MU_SCAN_MAX, max(50, N_SCAN))
+print(f"[1b/4] Preparing fit (config mode={FIT_MODE}) …")
 
-fit_results: dict = {"individual": {}, "simultaneous": {}}
+fit_results: dict = {"individual": {}}
 
 _GRID_6 = [
     ("mx", ["mx_1", "mx_2", "mx_3"], r"$E_{\ell,\mathrm{cut}}\,[\mathrm{GeV}]$"),
@@ -559,6 +607,33 @@ _GRID_6 = [
 
 
 def _postfit_plot(mu_vec, theta_vec, title, outfile, combine_gap=False, primary_meta=None):
+    # Build a dense cut grid per family for smooth gap curves.
+    _N_DENSE = 200
+    dense_cuts_by_key: dict[str, np.ndarray] = {}
+    for key, cuts in cuts_by_key.items():
+        lo, hi = float(cuts.min()), float(cuts.max())
+        dense_cuts_by_key[key] = np.linspace(lo, hi, _N_DENSE)
+
+    dense_pts: list[tuple[str, int]] = [
+        (key, i) for key in dense_cuts_by_key for i in range(_N_DENSE)
+    ]
+
+    k0_global = int(np.argmax(mu_vec))
+    mx2_g, el_g, q2_g, w_g = gap_arrays[k0_global]
+    Wg_d, Ng_d = _compute_WN(mx2_g, el_g, q2_g, w_g, dense_pts, dense_cuts_by_key)
+    W0_d, N0_d = _compute_WN(mx2_sm, el_sm, q2_sm, w0_sm, dense_pts, dense_cuts_by_key)
+
+    # For combine_gap: precompute dense WN for all modes once (not per axis).
+    if combine_gap:
+        _Wg_all_d = np.stack([
+            _compute_WN(arr[0], arr[1], arr[2], arr[3], dense_pts, dense_cuts_by_key)[0]
+            for arr in gap_arrays
+        ])  # (K, N_DENSE * n_keys)
+        _Ng_all_d = np.stack([
+            _compute_WN(arr[0], arr[1], arr[2], arr[3], dense_pts, dense_cuts_by_key)[1]
+            for arr in gap_arrays
+        ])
+
     fig_pf, axes_pf = plt.subplots(3, 3, figsize=(18, 10), dpi=150)
     for r, (_, keys, xlabel) in enumerate(_GRID_6):
         for c, key in enumerate(keys):
@@ -584,17 +659,26 @@ def _postfit_plot(mu_vec, theta_vec, title, outfile, combine_gap=False, primary_
             y_sm = np.divide(N0k, W0k, out=np.full_like(N0k, np.nan), where=W0k > 0)
             y_pf = np.divide(N_pf, W_pf, out=np.full_like(N_pf, np.nan), where=W_pf > 0)
 
+            # Dense indices for smooth gap curve
+            di = [i for i, (kk, _) in enumerate(dense_pts) if kk == key]
+            cuts_dense = dense_cuts_by_key[key]
+            W0_dk = W0_d[di]
+            N0_dk = N0_d[di]
+            Wg_dk = Wg_d[di]
+            Ng_dk = Ng_d[di]
+
             if combine_gap:
-                # Additive contribution of the fitted gap in moment space.
-                y_with_gap = np.divide(N0k + gap_Nk, W0k + gap_Wk, out=np.full_like(N0k, np.nan), where=(W0k + gap_Wk) > 0)
-                y_gr = y_with_gap - y_sm
+                gap_Wk_d = np.sum(mu_vec[:, np.newaxis] * _Wg_all_d[:, di], axis=0)
+                gap_Nk_d = np.sum(mu_vec[:, np.newaxis] * _Ng_all_d[:, di], axis=0)
+                y_with_gap_d = np.divide(N0_dk + gap_Nk_d, W0_dk + gap_Wk_d,
+                                         out=np.full_like(W0_dk, np.nan), where=(W0_dk + gap_Wk_d) > 0)
+                y_sm_d = np.divide(N0_dk, W0_dk, out=np.full_like(W0_dk, np.nan), where=W0_dk > 0)
+                y_gr_dense = y_with_gap_d - y_sm_d
                 gr_label = r"Added fitted gap contribution $\Delta_{\mathrm{gap}}$"
                 gr_color, gr_ls = "#9b59b6", "-"
             else:
-                k0 = int(np.argmax(mu_vec))
-                W_ref = Wg_all[k0][pi]
-                N_ref = Ng_all[k0][pi]
-                y_gr = np.divide(N_ref, W0k + W_ref, out=np.full_like(N0k, np.nan), where=(W0k + W_ref) > 0)
+                y_gr_dense = np.divide(Ng_dk, W0_dk + Wg_dk,
+                                       out=np.full_like(W0_dk, np.nan), where=(W0_dk + Wg_dk) > 0)
                 gr_label = rf"{primary_meta['label']} @ BR$_{{\rm ref}}$"
                 gr_color, gr_ls = primary_meta["color"], primary_meta["ls"]
 
@@ -608,10 +692,10 @@ def _postfit_plot(mu_vec, theta_vec, title, outfile, combine_gap=False, primary_
             ax.plot(cuts_pt, y_sm, color="0.45", lw=2.2, zorder=5,
                     label="SM (nominal)" if (r == c == 0) else None)
             if combine_gap:
-                ax.fill_between(cuts_pt, 0.0, y_gr, color=gr_color, alpha=0.7, zorder=3,
+                ax.fill_between(cuts_dense, 0.0, y_gr_dense, color=gr_color, alpha=0.7, zorder=3,
                                 label=gr_label if (r == c == 0) else None)
             else:
-                ax.plot(cuts_pt, y_gr, color=gr_color, lw=1.5, ls=gr_ls, zorder=6,
+                ax.plot(cuts_dense, y_gr_dense, color=gr_color, lw=1.5, ls=gr_ls, zorder=6,
                         label=gr_label if (r == c == 0) else None)
             ax.plot(cuts_pt, y_pf, color="black", lw=1.8, zorder=7,
                     label="Postfit" if (r == c == 0) else None)
@@ -640,202 +724,251 @@ def _postfit_plot(mu_vec, theta_vec, title, outfile, combine_gap=False, primary_
 
 
 # Individual mode fits + individual postfit plots
-print("[3/5] Running individual fits …")
-for k, meta in enumerate(loaded_meta):
-    Wg = Wg_all[k][np.newaxis, :]
-    Ng = Ng_all[k][np.newaxis, :]
-    mu_grid_1d = np.linspace(0., MU_SCAN_MAX, max(50, N_SCAN))
-    chi2_1d = np.full(len(mu_grid_1d), np.nan)
-    theta_at_1d = np.full((len(mu_grid_1d), M), np.nan)
-    theta_prev = np.zeros(M, dtype=float)
+if FIT_MODE in ("individual", "both"):
+    print("[2/4] Running individual fits …")
+    for k, meta in enumerate(loaded_meta):
+        Wg = Wg_all[k][np.newaxis, :]
+        Ng = Ng_all[k][np.newaxis, :]
+        mu_grid_1d = np.linspace(0., MU_SCAN_MAX, max(50, N_SCAN))
+        chi2_1d = np.full(len(mu_grid_1d), np.nan)
+        theta_at_1d = np.full((len(mu_grid_1d), M), np.nan)
+        theta_prev = np.zeros(M, dtype=float)
 
-    for i, mu in enumerate(mu_grid_1d):
-        mu_arr = np.array([mu], dtype=float)
+        for i, mu in enumerate(mu_grid_1d):
+            mu_arr = np.array([mu], dtype=float)
 
-        def _obj(th):
-            x = np.concatenate([mu_arr, th])
-            v, g = _eval_obj_and_grad(x, 1, y, inv_cov, W0, N0, Wg, Ng, dW, dN)
-            return v, g[1:]
+            def _obj(th):
+                x = np.concatenate([mu_arr, th])
+                v, g = _eval_obj_and_grad(x, 1, y, inv_cov, W0, N0, Wg, Ng, dW, dN)
+                return v, g[1:]
 
-        res = minimize(_obj, theta_prev, method="L-BFGS-B", bounds=theta_bounds, jac=True)
-        chi2_1d[i] = float(res.fun)
-        theta_at_1d[i] = res.x
-        theta_prev = res.x
+            res = minimize(_obj, theta_prev, method="L-BFGS-B", bounds=theta_bounds, jac=True)
+            chi2_1d[i] = float(res.fun)
+            theta_at_1d[i] = res.x
+            theta_prev = res.x
 
-    i_best = int(np.nanargmin(chi2_1d))
-    mu_ul = _extract_ul(mu_grid_1d, chi2_1d, i_best)
-    mu_b = float(mu_grid_1d[i_best])
-    th_b = theta_at_1d[i_best]
-    print(f"  {meta['mode']}: mu_best={mu_b:.3f}, UL95={mu_ul:.3f}, BR95={100*mu_ul*BR_REF:.3f}%")
+        i_best = int(np.nanargmin(chi2_1d))
+        mu_ul = _extract_ul(mu_grid_1d, chi2_1d, i_best)
+        mu_b = float(mu_grid_1d[i_best])
+        th_b = theta_at_1d[i_best]
+        print(f"  {meta['mode']}: mu_best={mu_b:.3f}, UL95={mu_ul:.3f}, BR95={100*mu_ul*BR_REF:.3f}%")
 
-    fit_results["individual"][meta["mode"]] = {
-        "mu_best": mu_b,
-        "mu_ul_95": float(mu_ul) if np.isfinite(mu_ul) else None,
-        "br_best_pct": 100. * mu_b * BR_REF,
-        "br_ul_95_pct": 100. * float(mu_ul) * BR_REF if np.isfinite(mu_ul) else None,
-        "chi2_min": float(chi2_1d[i_best]),
-        "theta_best": th_b.tolist(),
-        "profile_scan": {
-            "mu_grid": mu_grid_1d.tolist(),
-            "chi2_grid": chi2_1d.tolist(),
-        },
-    }
-    mu_vec = np.zeros(K, dtype=float)
-    mu_vec[k] = mu_b
-    _postfit_plot(
-        mu_vec=mu_vec,
-        theta_vec=th_b,
-        title=rf"{meta['label']} (individual fit): $\mathcal{{B}}^{{\mathrm{{best\ fit}}}}_{{\mathrm{{gap}}}}={100. * mu_b * BR_REF:.3f}\%$, $\mathcal{{B}}^{{\mathrm{{UL95}}}}_{{\mathrm{{gap}}}}={100. * mu_ul * BR_REF:.3f}\%$",
-        outfile=f"postfit_individual_{meta['mode']}.png",
-        combine_gap=False,
-        primary_meta=meta,
+        fit_results["individual"][meta["mode"]] = {
+            "mu_best": mu_b,
+            "mu_ul_95": float(mu_ul) if np.isfinite(mu_ul) else None,
+            "br_best_pct": 100. * mu_b * BR_REF,
+            "br_ul_95_pct": 100. * float(mu_ul) * BR_REF if np.isfinite(mu_ul) else None,
+            "chi2_min": float(chi2_1d[i_best]),
+            "theta_best": th_b.tolist(),
+            "profile_scan": {
+                "mu_grid": mu_grid_1d.tolist(),
+                "chi2_grid": chi2_1d.tolist(),
+            },
+        }
+        mu_vec = np.zeros(K, dtype=float)
+        mu_vec[k] = mu_b
+        _postfit_plot(
+            mu_vec=mu_vec,
+            theta_vec=th_b,
+            title=rf"{meta['label']} (individual fit): $\mathcal{{B}}^{{\mathrm{{best\ fit}}}}_{{\mathrm{{gap}}}}={100. * mu_b * BR_REF:.3f}\%$, $\mathcal{{B}}^{{\mathrm{{UL95}}}}_{{\mathrm{{gap}}}}={100. * mu_ul * BR_REF:.3f}\%$",
+            outfile=f"postfit_individual_{meta['mode']}.png",
+            combine_gap=False,
+            primary_meta=meta,
+        )
+
+# ── Unconstrained fit ────────────────────────────────────────────────────────
+# All mu_k >= 0 float freely; profile each mode individually.
+# Per-mode ULs are always >= individual single-mode ULs (shared minimum is lower).
+if FIT_MODE in ("unconstrained", "both"):
+    print("[3/4] Running unconstrained fit …")
+    mu_hi_unc = MU_SCAN_MAX + 2.0
+    unc_bounds = [(0., mu_hi_unc)] * K + list(theta_bounds)
+
+    res_unc = minimize(
+        lambda x: _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN),
+        np.zeros(K + M), method="L-BFGS-B", jac=True, bounds=unc_bounds,
+        options={"maxiter": 1000, "ftol": 1e-12},
     )
+    mu_k_unc  = res_unc.x[:K].copy()
+    theta_unc = res_unc.x[K:].copy()
+    chi2_unc  = float(res_unc.fun)
+    print(f"  chi2_min={chi2_unc:.4f}  mu_k={np.round(mu_k_unc, 3)}")
 
-# Simultaneous fit + combined postfit plot
-print("[4/5] Running simultaneous fit and profiling per-mode uncertainties …")
-chi2_prof = np.full(len(mu_grid), np.nan)
-muk_at = np.full((len(mu_grid), K), np.nan)
-theta_at = np.full((len(mu_grid), M), np.nan)
-mu_prev = np.zeros(K, dtype=float)
-theta_prev = np.zeros(M, dtype=float)
-t0 = time.monotonic()
+    n_prof_unc = max(80, N_SCAN // 2)
+    mu_other_idx_list = [[j for j in range(K) if j != k] for k in range(K)]
+    per_mode_unc = {}
+    t0_unc = time.monotonic()
+    for k_mode, meta in enumerate(loaded_meta):
+        mu_star  = float(mu_k_unc[k_mode])
+        mu_k_grid = np.linspace(0.0, mu_hi_unc, n_prof_unc)
+        i_k_best  = int(np.argmin(np.abs(mu_k_grid - mu_star)))
+        mu_k_grid[i_k_best] = mu_star
+        mu_oi = mu_other_idx_list[k_mode]
+        z_bnd = [(0., mu_hi_unc)] * (K - 1) + list(theta_bounds)
+        chi2_k = np.full(len(mu_k_grid), np.nan)
+        z_prev = np.concatenate([mu_k_unc[mu_oi], theta_unc])
+        for ii, mu_fix in enumerate(mu_k_grid):
+            def _obj_unc(z, _k=k_mode, _oi=mu_oi, _mf=mu_fix):
+                mu_other = z[:K - 1]; theta_z = z[K - 1:]
+                x = np.empty(K + M); x[_k] = _mf; x[_oi] = mu_other; x[K:] = theta_z
+                val, grad = _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN)
+                return val, np.concatenate([grad[_oi], grad[K:]])
+            res_k = minimize(_obj_unc, z_prev, method="L-BFGS-B", jac=True, bounds=z_bnd,
+                             options={"maxiter": 500})
+            chi2_k[ii] = float(res_k.fun)
+            z_prev = res_k.x
+        i_prof_best = int(np.nanargmin(chi2_k))
+        mu_ul_unc = _extract_ul(mu_k_grid, chi2_k, i_prof_best)
+        lo, hi, err_lo, err_hi = _extract_interval_at_delta(mu_k_grid, chi2_k, i_prof_best, delta=1.0)
+        br      = 100.0 * mu_star * BR_REF
+        br_ul   = 100.0 * float(mu_ul_unc) * BR_REF if np.isfinite(mu_ul_unc) else None
+        br_lo   = 100.0 * err_lo * BR_REF if np.isfinite(err_lo) else None
+        br_hi   = 100.0 * err_hi * BR_REF if np.isfinite(err_hi) else None
+        per_mode_unc[meta["mode"]] = {
+            "mu_k": mu_star, "mu_k_ul_95": float(mu_ul_unc) if np.isfinite(mu_ul_unc) else None,
+            "mu_k_err_lo_1sigma": float(err_lo) if np.isfinite(err_lo) else None,
+            "mu_k_err_hi_1sigma": float(err_hi) if np.isfinite(err_hi) else None,
+            "br_k_pct": br, "br_k_ul_95_pct": br_ul,
+            "br_k_err_lo_1sigma_pct": float(br_lo) if br_lo is not None else None,
+            "br_k_err_hi_1sigma_pct": float(br_hi) if br_hi is not None else None,
+            "profile_scan_mu_k": {"mu_grid": mu_k_grid.tolist(), "chi2_grid": chi2_k.tolist()},
+        }
+        print(f"  {meta['mode']}: mu_best={mu_star:.3f}  UL95={mu_ul_unc:.3f}  BR_UL={100*mu_ul_unc*BR_REF:.3f}%")
 
-for i, mu_T in enumerate(mu_grid):
-    if mu_T == 0.:
-        def _obj0(th):
-            vv, gg = _eval_obj_and_grad(np.concatenate([np.zeros(K), th]), K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN)
-            return vv, gg[K:]
-        res = minimize(_obj0, theta_prev, method="L-BFGS-B", bounds=theta_bounds, jac=True)
-        chi2_prof[i] = float(res.fun)
-        muk_at[i] = 0.
-        theta_at[i] = res.x
-        theta_prev = res.x
-        continue
+    dt_unc = time.monotonic() - t0_unc
+    print(f"  unconstrained profiling done in {dt_unc:.1f}s")
 
-    mu_bounds = [(0., float(mu_T))] * K
-    s_prev = float(np.sum(mu_prev))
-    mu_init = np.clip(mu_prev * mu_T / s_prev, 0., mu_T) if s_prev > 0 else np.full(K, mu_T / K)
-    x0_sl = np.concatenate([mu_init, theta_prev])
-    constraint = {
-        "type": "eq",
-        "fun": lambda x: float(np.sum(x[:K])) - mu_T,
-        "jac": lambda x: np.concatenate([np.ones(K), np.zeros(M)]),
-    }
-    res = minimize(lambda x: _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN),
-                   x0_sl, method="SLSQP", jac=True, bounds=mu_bounds + theta_bounds,
-                   constraints=[constraint], options={"ftol": 1e-10, "maxiter": 500})
-    chi2_prof[i] = float(res.fun)
-    muk_at[i] = res.x[:K]
-    theta_at[i] = res.x[K:]
-    mu_prev = res.x[:K].copy()
-    theta_prev = res.x[K:].copy()
-    if (i + 1) % max(1, len(mu_grid) // 10) == 0:
-        dt = time.monotonic() - t0
-        print(f"  scan {i+1}/{len(mu_grid)} mu_T={mu_T:.3f} ({dt:.1f}s)", flush=True)
+    # Bayesian ULs via MCMC (flat priors: mu_k >= 0, theta within bounds)
+    bayes_uls: dict = {}
+    if _EMCEE_AVAILABLE:
+        ndim_mc = K + M
+        nw = int(MCMC_N_WALKERS) if MCMC_N_WALKERS is not None else max(128, 4 * ndim_mc)
+        if nw % 2 != 0:
+            nw += 1
+        th_lo_mc = np.array([b[0] for b in theta_bounds])
+        th_hi_mc = np.array([b[1] for b in theta_bounds])
+        def _log_prob(x):
+            mu = x[:K]; th = x[K:]
+            if np.any(mu < 0.) or np.any(mu > mu_hi_unc): return -np.inf
+            if np.any(th < th_lo_mc) or np.any(th > th_hi_mc): return -np.inf
+            chi2_mc, _ = _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN)
+            return -np.inf if chi2_mc >= 1e29 else -0.5 * chi2_mc
+        rng_mc = np.random.default_rng(42)
+        p0_mc = np.concatenate([mu_k_unc, theta_unc]) + rng_mc.normal(0., 1e-3, size=(nw, ndim_mc))
+        p0_mc[:, :K] = np.clip(p0_mc[:, :K], 0., mu_hi_unc)
+        p0_mc[:, K:] = np.clip(p0_mc[:, K:], th_lo_mc, th_hi_mc)
+        print(f"  MCMC: {nw} walkers, {MCMC_N_BURN} burn + {MCMC_N_STEPS} steps …", flush=True)
+        t0_mc = time.monotonic()
+        sampler_mc = _emcee.EnsembleSampler(nw, ndim_mc, _log_prob)
+        sampler_mc.run_mcmc(p0_mc, MCMC_N_BURN + MCMC_N_STEPS, progress=False)
+        flat_mc = sampler_mc.get_chain(discard=MCMC_N_BURN, flat=True)
+        print(f"  MCMC done in {time.monotonic()-t0_mc:.1f}s  ({flat_mc.shape[0]} samples)", flush=True)
+        mu_total_samples = flat_mc[:, :K].sum(axis=1)
+        bayes_total_ul = float(np.percentile(mu_total_samples, 95.))
+        print(f"  total: bayes_UL={bayes_total_ul:.3f}  BR_bayes={100*bayes_total_ul*BR_REF:.3f}%")
+        for k_mode, meta in enumerate(loaded_meta):
+            ul_b = float(np.percentile(flat_mc[:, k_mode], 95.))
+            bayes_uls[meta["mode"]] = ul_b
+            entry = per_mode_unc[meta["mode"]]
+            entry["mu_k_bayes_ul_95"] = ul_b
+            entry["br_k_bayes_ul_95_pct"] = 100.0 * ul_b * BR_REF
+            prof_ul = entry["mu_k_ul_95"]
+            prof_ul_str = f"{prof_ul:.3f}" if prof_ul is not None else "nan"
+            print(f"  {meta['mode']}: prof_UL={prof_ul_str}  bayes_UL={ul_b:.3f}  "
+                  f"BR_bayes={100*ul_b*BR_REF:.3f}%")
+    else:
+        bayes_total_ul = None
+        print("  emcee not available, skipping Bayesian ULs (pip install emcee)")
 
-i_best = int(np.nanargmin(chi2_prof))
-mu_ul = _extract_ul(mu_grid, chi2_prof, i_best)
-mu_k_best = muk_at[i_best]
-theta_best = theta_at[i_best]
-chi2_min = float(chi2_prof[i_best])
+    # Profile scan of mu_total = sum(mu_k) with all mu_k >= 0 free (SLSQP equality constraint)
+    mu_total_best = float(np.sum(mu_k_unc))
+    mu_total_hi = mu_total_best + mu_hi_unc
+    mu_total_grid = np.linspace(0.0, mu_total_hi, max(100, N_SCAN))
+    i_tot_best = int(np.argmin(np.abs(mu_total_grid - mu_total_best)))
+    mu_total_grid[i_tot_best] = mu_total_best
+    chi2_tot = np.full(len(mu_total_grid), np.nan)
+    mu_k_prev = mu_k_unc.copy()
+    theta_prev_tot = theta_unc.copy()
+    t0_tot = time.monotonic()
+    for ii, mu_T in enumerate(mu_total_grid):
+        if mu_T == 0.:
+            def _obj_tot0(th):
+                vv, gg = _eval_obj_and_grad(np.concatenate([np.zeros(K), th]), K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN)
+                return vv, gg[K:]
+            res_t = minimize(_obj_tot0, theta_prev_tot, method="L-BFGS-B", bounds=theta_bounds, jac=True)
+            chi2_tot[ii] = float(res_t.fun)
+            theta_prev_tot = res_t.x
+            mu_k_prev = np.zeros(K)
+            continue
+        s_prev = float(np.sum(mu_k_prev))
+        mu_init = np.clip(mu_k_prev * mu_T / s_prev, 0., None) if s_prev > 0 else np.full(K, mu_T / K)
+        x0 = np.concatenate([mu_init, theta_prev_tot])
+        con = {"type": "eq", "fun": lambda x: float(np.sum(x[:K])) - mu_T,
+               "jac": lambda x: np.concatenate([np.ones(K), np.zeros(M)])}
+        res_t = minimize(
+            lambda x: _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN),
+            x0, method="SLSQP", jac=True, bounds=[(0., None)] * K + theta_bounds,
+            constraints=[con], options={"ftol": 1e-10, "maxiter": 500},
+        )
+        chi2_tot[ii] = float(res_t.fun)
+        mu_k_prev = res_t.x[:K].copy()
+        theta_prev_tot = res_t.x[K:].copy()
+    mu_total_ul = _extract_ul(mu_total_grid, chi2_tot, i_tot_best)
+    print(f"  total: mu_best={mu_total_best:.3f}  UL95={mu_total_ul:.3f}  BR_UL={100*mu_total_ul*BR_REF:.3f}%  ({time.monotonic()-t0_tot:.1f}s)")
 
-per_mode_out = {}
-mu_hi = max(MU_SCAN_MAX, float(np.max(mu_k_best) + 2.0))
-n_prof = max(80, N_SCAN // 2)
-for k_mode, meta in enumerate(loaded_meta):
-    mu_star = float(mu_k_best[k_mode])
-    mu_k_grid = np.linspace(0.0, mu_hi, n_prof)
-    i_k_best = int(np.argmin(np.abs(mu_k_grid - mu_star)))
-    mu_k_grid[i_k_best] = mu_star
-    mu_other_idx = [j for j in range(K) if j != k_mode]
-    z0 = np.concatenate([mu_k_best[mu_other_idx], theta_best])
-    z_bounds = [(0.0, mu_hi)] * (K - 1) + theta_bounds
-    chi2_k = np.full(len(mu_k_grid), np.nan)
-    z_prev = z0.copy()
-    for ii, mu_fix in enumerate(mu_k_grid):
-        def _obj_mode(z):
-            mu_other = z[:K - 1]
-            theta_z = z[K - 1:]
-            x = np.empty(K + M, dtype=float)
-            x[k_mode] = mu_fix
-            x[mu_other_idx] = mu_other
-            x[K:] = theta_z
-            val, grad = _eval_obj_and_grad(x, K, y, inv_cov, W0, N0, Wg_all, Ng_all, dW, dN)
-            g = np.concatenate([grad[mu_other_idx], grad[K:]])
-            return val, g
-        res_k = minimize(_obj_mode, z_prev, method="L-BFGS-B", jac=True, bounds=z_bounds, options={"maxiter": 500})
-        chi2_k[ii] = float(res_k.fun)
-        z_prev = res_k.x
-    i_prof_best = int(np.nanargmin(chi2_k))
-    lo, hi, err_lo, err_hi = _extract_interval_at_delta(mu_k_grid, chi2_k, i_prof_best, delta=1.0)
-    br = 100.0 * mu_star * BR_REF
-    br_lo = 100.0 * err_lo * BR_REF if np.isfinite(err_lo) else np.nan
-    br_hi = 100.0 * err_hi * BR_REF if np.isfinite(err_hi) else np.nan
-    per_mode_out[meta["mode"]] = {
-        "mu_k": mu_star,
-        "mu_k_err_lo_1sigma": float(err_lo) if np.isfinite(err_lo) else None,
-        "mu_k_err_hi_1sigma": float(err_hi) if np.isfinite(err_hi) else None,
-        "br_k_pct": br,
-        "br_k_err_lo_1sigma_pct": float(br_lo) if np.isfinite(br_lo) else None,
-        "br_k_err_hi_1sigma_pct": float(br_hi) if np.isfinite(br_hi) else None,
-        "profile_scan_mu_k": {
-            "mu_grid": mu_k_grid.tolist(),
-            "chi2_grid": chi2_k.tolist(),
+    fig_tot, ax_tot = plt.subplots(figsize=(8, 5), dpi=150)
+    ax_tot.plot(mu_total_grid * BR_REF * 100, chi2_tot - chi2_unc, color="navy", lw=1.8)
+    ax_tot.axhline(DELTA_CHI2, color="red", ls="--", lw=1.2, label=rf"$\Delta\chi^2={DELTA_CHI2}$")
+    if np.isfinite(mu_total_ul):
+        ax_tot.axvline(mu_total_ul * BR_REF * 100, color="red", ls=":", lw=1.2,
+                       label=rf"UL95$={100*mu_total_ul*BR_REF:.3f}\%$")
+    ax_tot.axvline(mu_total_best * BR_REF * 100, color="green", ls=":", lw=1.2,
+                   label=rf"Best$={100*mu_total_best*BR_REF:.3f}\%$")
+    ax_tot.set_xlabel(r"$\mathcal{B}_{\rm gap}^{\rm total}$ [%]")
+    ax_tot.set_ylabel(r"$\Delta\chi^2$")
+    ax_tot.set_ylim(bottom=-0.5)
+    ax_tot.legend(fontsize=14, frameon=False)
+    ax_tot.grid(alpha=0.25)
+    fig_tot.suptitle("Profile scan: total gap-mode BR (unconstrained fit)", fontsize=14)
+    fig_tot.tight_layout()
+    fig_tot.savefig(fig6 / "profile_scan_total_unc.png")
+    plt.close(fig_tot)
+    print("  Wrote figures/6/profile_scan_total_unc.png")
+
+    fit_results["unconstrained"] = {
+        "chi2_min": chi2_unc,
+        "mu_k_best": mu_k_unc.tolist(),
+        "theta_best": theta_unc.tolist(),
+        "per_mode": per_mode_unc,
+        "total_profile_scan": {
+            "mu_total_best": mu_total_best,
+            "mu_total_ul_95": float(mu_total_ul) if np.isfinite(mu_total_ul) else None,
+            "br_total_best_pct": 100.0 * mu_total_best * BR_REF,
+            "br_total_ul_95_pct": 100.0 * float(mu_total_ul) * BR_REF if np.isfinite(mu_total_ul) else None,
+            "mu_total_bayes_ul_95": bayes_total_ul,
+            "br_total_bayes_ul_95_pct": 100.0 * bayes_total_ul * BR_REF if bayes_total_ul is not None else None,
+            "mu_grid": mu_total_grid.tolist(),
+            "chi2_grid": chi2_tot.tolist(),
         },
+        "top_pulls": sorted(
+            [{"name": nuisance_names[i], "theta": float(theta_unc[i])} for i in range(M)],
+            key=lambda d: abs(d["theta"]), reverse=True,
+        )[:10],
     }
 
-fit_results["simultaneous"] = {
-    "mu_total_best": float(mu_grid[i_best]),
-    "mu_total_ul_95": float(mu_ul) if np.isfinite(mu_ul) else None,
-    "br_total_best_pct": 100. * float(mu_grid[i_best]) * BR_REF,
-    "br_total_ul_95_pct": 100. * float(mu_ul) * BR_REF if np.isfinite(mu_ul) else None,
-    "chi2_min": chi2_min,
-    "mu_k_best": mu_k_best.tolist(),
-    "theta_best": theta_best.tolist(),
-    "profile_scan": {
-        "mu_total_grid": mu_grid.tolist(),
-        "chi2_grid": chi2_prof.tolist(),
-    },
-    "per_mode": per_mode_out,
-    "nuisance_names": nuisance_names,
-    "top_pulls": sorted(
-        [{"name": nuisance_names[i], "theta": float(theta_best[i])} for i in range(M)],
-        key=lambda d: abs(d["theta"]), reverse=True
-    )[:10],
-}
-
-fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
-ax.plot(mu_grid, chi2_prof - chi2_prof[i_best], color="navy", lw=1.8)
-ax.axhline(DELTA_CHI2, color="red", ls="--", lw=1.2, label=rf"$\Delta\chi^2={DELTA_CHI2}$")
-if np.isfinite(mu_ul):
-    ax.axvline(mu_ul, color="red", ls=":", lw=1.2, label=f"UL95={mu_ul:.3f}")
-ax.axvline(mu_grid[i_best], color="green", ls=":", lw=1.2, label=f"Best={mu_grid[i_best]:.3f}")
-ax.set_xlabel(r"$\mu_{\rm total}$ (signal strength at $\mathcal{B}_{\rm ref}$)")
-ax.set_ylabel(r"$\Delta\chi^2$")
-ax.set_ylim(bottom=-0.5)
-ax.legend(fontsize=16, frameon=False)
-ax.grid(alpha=0.25)
-fig.suptitle("Profile scan: simultaneous gap-mode fit", fontsize=16)
-fig.tight_layout()
-fig.savefig(fig6 / "profile_scan.png")
-plt.close(fig)
-print("  Wrote figures/6/profile_scan.png")
-
-_postfit_plot(
-    mu_vec=mu_k_best,
-    theta_vec=theta_best,
-    title=rf"Combined fit: $\mathcal{{B}}^{{\mathrm{{best\ fit}}}}_{{\mathrm{{gap}}}}={100. * float(mu_grid[i_best]) * BR_REF:.3f}\%$, $\mathcal{{B}}^{{\mathrm{{UL95}}}}_{{\mathrm{{gap}}}}={100. * mu_ul * BR_REF:.3f}\%$",
-    outfile="postfit_combined.png",
-    combine_gap=True,
-)
-
+    _postfit_plot(
+        mu_vec=mu_k_unc, theta_vec=theta_unc,
+        title="Unconstrained fit (all modes free)",
+        outfile="postfit_unconstrained.png",
+        combine_gap=True,
+    )
 
 # ── Save results ──────────────────────────────────────────────────────────────
 
-print("[5/5] Writing output/6/fit_results.json …")
+print("[4/4] Writing output/6/fit_results.json …")
 payload = {
     "settings": {
-        "fit_mode_config": FIT_MODE, "fit_mode_executed": "both", "active_modes": ACTIVE_MODES,
+        "fit_mode_config": FIT_MODE, "active_modes": ACTIVE_MODES,
         "cov_source_used": "average_raw_cov_from_step4",
         "include_cocktail_dsk": INCLUDE_DSK_IN_SM,
         "el_cut_min": EL_PRECUT, "delta_chi2": DELTA_CHI2,
@@ -846,10 +979,10 @@ payload = {
     "results": fit_results,
 }
 (out6 / "fit_results.json").write_text(json.dumps(payload, indent=2))
-_write_individual_results_tex(out6 / "fit_results_individual.tex", fit_results["individual"], loaded_meta)
-_write_combined_results_tex(out6 / "fit_results_combined.tex", fit_results["simultaneous"])
-_write_top_pulls_tex(out6 / "fit_results_combined_top_pulls.tex", fit_results["simultaneous"].get("top_pulls", []))
-print("  Wrote output/6/fit_results_individual.tex")
-print("  Wrote output/6/fit_results_combined.tex")
-print("  Wrote output/6/fit_results_combined_top_pulls.tex")
+if fit_results["individual"]:
+    _write_individual_results_tex(out6 / "fit_results_individual.tex", fit_results["individual"], loaded_meta)
+    print("  Wrote output/6/fit_results_individual.tex")
+if "unconstrained" in fit_results:
+    _write_unconstrained_results_tex(out6 / "fit_results_unconstrained.tex", fit_results["unconstrained"])
+    print("  Wrote output/6/fit_results_unconstrained.tex")
 print("Done.")

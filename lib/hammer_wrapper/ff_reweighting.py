@@ -9,7 +9,7 @@ from typing import Iterable, Dict, List, Iterator, Tuple
 
 from sysvar.utils import corr2cov
 
-from hammer.hammerlib import Hammer, Process, Particle, FourMomentum, IOBuffer
+from hammer.hammerlib import Hammer, Process, Particle, FourMomentum
 
 try:
     from rdstar1prong.hammer_wrapper.ff_models import (
@@ -100,22 +100,18 @@ class HammerRateContainer(MutableMapping):
 
 
 class HammerStudy:
-    def __init__(self, mode=str, default_names: bool = True):
+    def __init__(self, mode: str, default_names: bool = True):
 
         if mode == "B2":
             self.input_models = [
                 BGL.BtoDstEllNu_B2dec(),
-                ####
                 BGLB2.BtoDEllNu_dec(),
-                ####
                 BLR.BtoD1EllNu_dec(),
                 BLR.BtoD0stEllNu_dec(),
                 BLR.BtoD1prEllNu_dec(),
                 BLR.BtoD2stEllNu_dec(),
-                ####
                 CLN.BtoDTauNu_dec(),
                 CLN.BtoDstTauNu_dec(),
-                ####
                 BLR.BtoD1EllNu_dec(tau=True),
                 BLR.BtoD0stEllNu_dec(tau=True),
                 BLR.BtoD1prEllNu_dec(tau=True),
@@ -174,7 +170,7 @@ class HammerStudy:
         logging.info("PDG variable: %s", self._pdg_var)
         logging.info(
             "Four momentum variables: %s, %s, %s, %s,",
-            *[var for var in self._four_momentum_vars],
+            *self._four_momentum_vars,
         )
         logging.info(
             "B meson prefix: %s ",
@@ -182,11 +178,11 @@ class HammerStudy:
         )
         logging.info(
             "B meson daughter prefixes: %s ",
-            [var for var in self._generations["B_daughters"]],
+            self._generations["B_daughters"],
         )
         logging.info(
             "Xc meson daughter prefixes: %s ",
-            [var for var in self._generations["Xc_daughters"]],
+            self._generations["Xc_daughters"],
         )
         logging.info(
             "The HammerStudy class will take care of building the full variable names"
@@ -259,18 +255,10 @@ class HammerStudy:
 
         input_schemes_for_hammer = {}
         for model in self.input_models:
-
-            # What enters in these strings is important.
-            # However there are a lot of inconsistencies across the HAMMER API.
             model_scheme = self._get_ff_scheme_dictionary(model)
-
-            # Now update the dictionary and the list
             input_schemes_for_hammer.update(model_scheme)
-
-            # Add the D** ff models
             self._add_Dstst_ff_models(model, input_schemes_for_hammer)
 
-        # Set the input info for hammer now using the HAMMER API
         self.hammer.set_ff_input_scheme(input_schemes_for_hammer)
 
         for model in self.input_models:
@@ -292,33 +280,25 @@ class HammerStudy:
         suffix: None | str = None,
         parameters: None | Iterable = None,
     ):
-        # For the input FF schemes we don't need a suffix identifier
+        # HAMMER expects "BtoD*..." not "BD*..." for the input scheme, even though
+        # the scheme dictionaries elsewhere use the "BD*" form without "to".
         if suffix is None:
-            # Notice the inconsistancy of the HAMMER API here.
-            # e.g. BtoD* instead of BD*
-            # If "to" is not added tho, hammer errors
             template = f"Bto{model.Xc}{model.name}: {model.param_init}"
         else:
-            # But for new models we want to add a suffix
             template = f"Bto{model.Xc}{model.name}_{suffix}: {model.param_init}"
 
         if parameters is None:
-            # here loop over the parameter names and values
             string = template % tuple(
-                [
-                    (
-                        param.nominal_value
-                        if name != "DelMbc"
-                        else param["mc"].nominal_value
-                    )
-                    for name, param in model.params.items()
-                ]
+                (
+                    param.nominal_value
+                    if name != "DelMbc"
+                    else param["mc"].nominal_value
+                )
+                for name, param in model.params.items()
             )
-
         else:
-            # here loop over the values e.g. for eigenvariations
             string = f"Bto{model.Xc}{model.name}_{suffix}: {model.param_init}" % tuple(
-                [param for param in parameters]
+                parameters
             )
         return string
 
@@ -331,16 +311,13 @@ class HammerStudy:
         scheme_options = {scheme_name: []}
 
         for i, model in enumerate(models):
-            ####################################################################
             if not isinstance(model, FFModel):
                 raise ValueError(
                     f"Model number {i} in the arguments is not an instance of FFModel"
                 )
             decay = self._get_decay_name(model)
-            # Include the decay that is described by the particular model
             self.hammer.include_decay(decay)
 
-            # Create the string containing the FF model parameters
             param_string = self._create_param_string(model=model, suffix=scheme_name)
             if verbose:
                 logging.info("Adding %s model for %s decay", model.name, decay)
@@ -355,7 +332,6 @@ class HammerStudy:
             scheme_options[scheme_name].append(param_string)
 
             self._add_Dstst_ff_models(model, scheme_dict[scheme_name])
-            ###################################################################
 
             eigenvalue_variations = get_varied_FF_central_values(model)
             if verbose:
@@ -364,15 +340,10 @@ class HammerStudy:
                     eigenvalue_variations,
                 )
             for i, eigenvar in enumerate(eigenvalue_variations):
-
-                # Create the tokens that will be added to the variation schemes
                 up_var, down_var = f"up{i}", f"down{i}"
-
-                # Now update the dictionaries with the up variations
                 self._add_eigenvariation_to_scheme_setup(
                     scheme_dict, scheme_options, scheme_name, model, up_var, eigenvar[0]
                 )
-                # And now with the down variations
                 self._add_eigenvariation_to_scheme_setup(
                     scheme_dict,
                     scheme_options,
@@ -381,8 +352,6 @@ class HammerStudy:
                     down_var,
                     eigenvar[1],
                 )
-
-            ###################################################################
 
         if verbose:
             logging.info(
@@ -396,7 +365,6 @@ class HammerStudy:
             models, scheme_dict, scheme_options, scheme_name
         )
 
-        # And now we want to add all schemes to HAMMER
         for (scheme_n1, names), options in zip(
             scheme_dict.items(), scheme_options.values()
         ):
@@ -414,15 +382,13 @@ class HammerStudy:
     ):
 
         for model in models:
-            # Check if all the models have the same number of variations
-
             for (scheme_n1, model_names), options in zip(
                 scheme_dict.items(), scheme_options.values()
             ):
-
+                # Models can have differing numbers of eigenvariations; pad the
+                # missing ones with the nominal value so every scheme has an
+                # entry for every model, or HAMMER errors out.
                 if f"B{model.Xc}" not in model_names.keys():
-                    # If some model has less eigenvariations than the maximum number
-                    # Then pad them with the nominal value
                     logging.warning(
                         "Will pad model %s for variation %s with the nominal values",
                         model.name,
@@ -446,13 +412,11 @@ class HammerStudy:
         parameters: np.ndarray,
     ):
 
-        # Create a placeholder if the scheme name has not been defined yet
         if scheme_name + "_" + var_token not in scheme_dict.keys():
             self._add_placeholder_for_variation(
                 scheme_dict, scheme_options, scheme_name, var_token
             )
 
-        # Now update the scheme dictionaries
         scheme_dict[scheme_name + "_" + var_token].update(
             self._get_ff_scheme_dictionary(model, var_token)
         )
@@ -504,7 +468,7 @@ class HammerStudy:
 
     def _get_new_df_columnnames(self, scheme: str):
 
-        new_cols = [scheme for scheme in self.hammer.get_ff_scheme_names()]
+        new_cols = list(self.hammer.get_ff_scheme_names())
         new_cols.append(f"denom_rate_{scheme}")
         new_cols.append(f"new_rate_{scheme}")
         new_cols.append(f"hammer_reweighted_{scheme}")
@@ -520,13 +484,13 @@ class HammerStudy:
         verbose: bool = False,
     ):
 
-        # If this is not a semileptonic event return ones for everything
+        # Not a semileptonic event: nothing to reweight.
         if row[
             f"{self.generations['B_daughters'][1]}_mcPDG"
         ] not in self._get_particle_pdg_codes("leptons"):
             return self._add_unweighted_results()
 
-        # PATCH if the tau daugthers are not properly matched return one for everything
+        # Tau daughters not properly matched in truth: skip reweighting rather than crash.
         if row[f"{self.generations['B_daughters'][1]}_mcPDG"] in [15, -15]:
             if (
                 row[f"{self.generations['tau_daughters'][0]}_mcPDG"] == -9999
@@ -537,18 +501,15 @@ class HammerStudy:
             ):
                 return self._add_unweighted_results()
 
-        # Now run the process since we caught all pathogenic cases.
+        # Build the decay tree generation by generation (breadth-first): a HAMMER
+        # vertex can only reference particles already added to the process.
         self.hammer.init_event()
         process = Process()
 
-        # We will adopt a Breadth First Search approach
-
-        # First add the Bmeson
         if not self._has_valid_particle(row, self._generations["B"]):
             return self._add_unweighted_results()
         Bmeson = self._add_hammer_particle(process, row, self._generations["B"])
 
-        # Now let's first add the first generation
         if not all(
             self._has_valid_particle(row, prefix)
             for prefix in self.generations["B_daughters"]
@@ -558,10 +519,9 @@ class HammerStudy:
             self._add_hammer_particle(process, row, prefix)
             for prefix in self.generations["B_daughters"]
         ]
-        # And add the decay vertex
         process.add_vertex(Bmeson, B_daughters)
 
-        # Now let's first add the first generation if we have a D* or a D**meson
+        # Only D*/D** decays have an Xc sub-vertex.
         if row[f"{self._generations['B_daughters'][0]}_{self._pdg_var}"] in [
             *self._get_particle_pdg_codes("D*"),
             *self._get_particle_pdg_codes("D**"),
@@ -576,12 +536,9 @@ class HammerStudy:
                     self._add_hammer_particle(process, row, prefix)
                     for prefix in self.generations["Xc_daughters"]
                 ]
-                # And add the decay vertex. The Xc should have been added first
                 process.add_vertex(B_daughters[0], Xc_daughters)
             else:
                 Xc_daughters = []
-
-            # Now let's Add the tau lepton daughters if we have one
 
         if row[f"{self._generations['B_daughters'][1]}_{self._pdg_var}"] in [
             *self._get_particle_pdg_codes("tau"),
@@ -591,13 +548,8 @@ class HammerStudy:
                 for prefix in self.generations["tau_daughters"]
                 if row[f"{prefix}_mcPDG"] != -9999
             ]
-            # And add the decay vertex. The tau should have been added second
-            # PATCH do not include tau --> 3pi nu
-            # Error message:
-            # Hammer.ProcManager: ERROR  Unable to contract rate tensor for vertex with parent 15 with scheme test_BLPRXP_up7. Eject! Eject!
-            # Hammer.RateBase: INFO  Integrating rate -15 -> 211 211 -211 -16
-            # Hammer.ProcManager: ERROR  Unable to contract rate tensor for vertex with parent 15 with scheme test_BLPRXP_up8. Eject! Eject!
-            # Hammer.ProcManager: ERROR  Denominator has uncontracted indices, with rank 2. There's a monster in the basement! Check FF input scheme has been correctly set.
+            # Exclude tau -> pi pi pi nu: HAMMER can't contract the rate tensor for
+            # this vertex (errors out with "uncontracted indices" / "Eject! Eject!").
             if (
                 abs(row[f"{self._generations['tau_daughters'][0]}_{self._pdg_var}"])
                 == 211
@@ -612,7 +564,7 @@ class HammerStudy:
             else:
                 process.add_vertex(B_daughters[1], tau_daughters)
 
-        # Now let's first add the second generation if we have a D**meson
+        # D** decays have a further Xc grand-daughter vertex.
         if row[f"{self._generations['B_daughters'][0]}_{self._pdg_var}"] in [
             *self._get_particle_pdg_codes("D**"),
         ]:
@@ -628,7 +580,6 @@ class HammerStudy:
                     self._add_hammer_particle(process, row, prefix)
                     for prefix in self.generations["Xc_grand_daughters"]
                 ]
-                # And add the decay vertex. The Xc should have been added first
                 process.add_vertex(Xc_daughters[0], Xc_grand_daughters)
 
         self.hammer.add_process(process)
@@ -640,7 +591,6 @@ class HammerStudy:
             )
         self.hammer.process_event()
 
-        # If the event was actually a semileptonic one show info if need be
         if self._get_vertex_decay(row) != "" and verbose:
             logging.info("#################################################")
             logging.info("Processing event: %s", row["__event__"])
@@ -884,7 +834,7 @@ class HammerStudy:
 
 def get_varied_FF_central_values(model):
     """
-    Inhereted from Henrik
+    Inherited from Henrik.
     Function to calculate the different +-1sigma variations of the form factors.
     For that, the form factor parameters are rotated into a paramter space in which all of
     them are perfectly orthogonal and uncorrelated (the eigenvectors of the covariance matrix).
@@ -902,7 +852,6 @@ def get_varied_FF_central_values(model):
                     If statistical and systematic errors are distinguished, the dict needs entries
                     "stat_{i}", "syst_{i}" and corrmat_stat / _syst.
     """
-    # get central values covariance matrices:
     cvs = np.array(
         [
             param.nominal_value if name != "DelMbc" else param["DelMbc"].nominal_value
@@ -918,17 +867,12 @@ def get_varied_FF_central_values(model):
     covariance_matrix = corr2cov(model.corr_matrix, errors)
 
     eigenvalues, eigenvectors = np.linalg.eig(covariance_matrix)
-    diagonalized_covariance_matrix = (
-        np.linalg.inv(eigenvectors) @ covariance_matrix @ eigenvectors
-    )
 
-    # check if one of the parameters is DelMbc,
-    # in this case, unfortunately the charm mass mc needs
-    # to be calculated and must replace DelMbc to still fulfil the parameter string
-    # of the dictionary.
+    # If DelMbc is one of the parameters, the charm mass mc must be derived from
+    # it (mc = mb - DelMbc) to still populate the HAMMER parameter string below.
     param_names = [name for name in model.params.keys()]
     if "DelMbc" in param_names:
-        logging.warn(
+        logging.warning(
             "WARNING! The selected form factor model contains mb and mc. Please take extra care that everything works as expected."
         )
         mb_index = param_names.index("mb")

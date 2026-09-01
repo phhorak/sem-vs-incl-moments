@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import logging
 
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from uncertainties import ufloat as uf
 
 from sysvar.utils import SavableAttributesObject
-
-from matplotlib.pyplot import show
-
-import logging
+from sysvar.visualize import Visualizer, DPI, CMAP, get_latex_symbol
 
 logging.basicConfig(
     format="%(levelname)s :  %(message)s",
@@ -19,7 +18,7 @@ logging.basicConfig(
 
 def show_available_models(model: str | None = None):
 
-    logging.warn(
+    logging.warning(
         "If the model parameters you are interested in are not available, you need to implement a classmethod with the the parameters of interest. Take a look at sysvar.ff_models for examples"
     )
 
@@ -59,7 +58,7 @@ def print_model_info(
         ax = visualizer.plot_corr_and_params(save=save, filename=filename)
     else:
         ax = visualizer.plot_params(save=save, filename=filename)
-    show()
+    plt.show()
 
 
 class FFModel(SavableAttributesObject):
@@ -179,27 +178,60 @@ class BGL(FFModel):
         )
 
     @classmethod
+    def BtoDEllNu_ins2936544(cls):
+        """
+        B -> D BGL refit with Hammer's actual Blaschke factors, constrained to
+        HEPData ins2936544 (B -> D ell nu dGamma/dw, 10 bins, w in [1.0, 1.59])
+        plus MILC+HPQCD lattice QCD inputs. Fit via DlDetal/.../sem-hausdorff
+        investigations/ff_impl_crosscheck/fit_bgl_hammer_params.py, chi2/dof =
+        8.34/13. a0_1 is derived from the f+(wmax)=f0(wmax) kinematic constraint;
+        its uncertainty/correlations are propagated from the other 7 fitted
+        parameters (not treated as independent). Vcb = 39.53 +/- 0.67 (x1e-3)
+        from the fit but not used here (cancels in the ff_weight ratio).
+        Supersedes BtoDEllNu_dec_updated() (Schwanda refit of arXiv:1510.03657)
+        as the reweighting target — re-run the fit script if newer HEPData/lattice
+        inputs become available.
+        """
+        return cls(
+            Xc="D",
+            lep="Ell",
+            params={
+                "a+_1": uf(0.015545, 0.000107),
+                "a+_2": uf(-0.034611, 0.003211),
+                "a+_3": uf(-0.129226, 0.089293),
+                "a+_4": uf(1.411815, 2.634988),
+                "a0_1": uf(0.077607, 0.000531),
+                "a0_2": uf(-0.234187, 0.020609),
+                "a0_3": uf(2.118891, 1.462642),
+                "a0_4": uf(-24.649408, 22.059403),
+            },
+            param_init="{ap: [%f,%f,%f,%f], a0: [%f,%f,%f,%f]}",
+            corr_matrix=np.array([
+                [1.00000000, 0.19721669, 0.05409357, -0.08631800, 0.78252090, 0.19650267, -0.03435580, 0.00950549],
+                [0.19721669, 1.00000000, -0.02196083, -0.12256575, 0.22697624, 0.25302663, 0.36942355, -0.34607050],
+                [0.05409357, -0.02196083, 1.00000000, -0.93130260, 0.06648694, 0.15849086, 0.19042852, -0.47480010],
+                [-0.08631800, -0.12256575, -0.93130260, 1.00000000, -0.09573941, -0.07097244, -0.30492472, 0.60928165],
+                [0.78252090, 0.22697624, 0.06648694, -0.09573941, 1.00000000, 0.03927568, -0.03804134, 0.01325128],
+                [0.19650267, 0.25302663, 0.15849086, -0.07097244, 0.03927568, 1.00000000, -0.65329344, 0.51143167],
+                [-0.03435580, 0.36942355, 0.19042852, -0.30492472, -0.03804134, -0.65329344, 1.00000000, -0.93738500],
+                [0.00950549, -0.34607050, -0.47480010, 0.60928165, 0.01325128, 0.51143167, -0.93738500, 1.00000000],
+            ]),
+            expert_info=cls.BtoDEllNu_ins2936544.__func__.__doc__,
+        )
+
+    @classmethod
     def BtoDstEllNu_Scaled(cls, tau=False):
         """
-        B -> D* FFs from Svenja. wg1_b2pilnu/Systematics/B2DstFF.ipynb
-        She uses for the dec-file the BGL parameters of https://arxiv.org/pdf/2008.09341v1.pdf TableVI BGl(1,1,2)
-        Also see the dec file: In there, all values are divided already by Vcb*eta_EW = 34.9e-3/0.906. Hammer does
-        this division on its own later.
+        B -> D* FFs from Svenja (wg1_b2pilnu/Systematics/B2DstFF.ipynb), BGL(1,1,2) parameters of
+        https://arxiv.org/pdf/2008.09341v1.pdf table VI, as used (already Vcb-scaled) in the dec file:
         https://stash.desy.de/projects/B2/repos/software/browse/decfiles/dec/DECAY_BELLE2.DEC?at=refs%2Ftags%2Frelease-05-02-00#345,369,3873,3900
-        no correlations or errors needed for the matrix that is only used for the central values.
-        Vcb does not matter here but is 1.0/1.0066
-        Hammer is using the default parameters https://arxiv.org/pdf/1902.09553.pdf that enormously differ from the Belle II input.
-        Maybe this is due to the fact that in the final result of Belle in the paper, the disagreeing lattice QCD results are considered. E.g.
-        the parameters of table IV largely differ from table VI. But Florian says that they don't use the super bad lQCD results?! He claims
-        that they use the untagged analysis while 1902... uses a tagged one. However, both shapes were compared in https://arxiv.org/pdf/1908.09398.pdf
-        fig. 2 (P_D*(w)) and they seem to agree here. I should test this further also with BLPRXP which also uses untagged inputs.
-        Maybe this is also due to some different definitions of the parameters.
-        In the latter case, Hammer will only be consistent with its default parameters...
-        below are the values as they are used in the dec-file, as they are already scaled with Vcb:
-        in EvtGens BGL implementation, a0f is set to zero. This should be analogous to setting the d-vector to zero.
-        cf https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtBGLFF.cc#141
-        vs https://gitlab.com/mpapucci/Hammer/-/blob/development/src/FormFactors/BGL/FFBtoDstarBGL.cc#L175
-        d-vec = 0 -> R0 = 0 -> a0f = 0, c.f. https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtHQET3FF.cc#92
+        Only used for central values, so no correlations/errors needed; Vcb is 1.0/1.0066 but irrelevant here.
+        EvtGen's BGL sets a0f=0 (equivalent to Hammer's d-vector=0), cf.
+        https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtBGLFF.cc#141 vs
+        https://gitlab.com/mpapucci/Hammer/-/blob/development/src/FormFactors/BGL/FFBtoDstarBGL.cc#L175
+        Note: Hammer's own default parameters (https://arxiv.org/pdf/1902.09553.pdf) differ substantially from
+        these Belle II inputs, for reasons not fully understood (possibly differing lattice QCD treatment or
+        parameter definitions) - the shapes were cross-checked and agree in https://arxiv.org/pdf/1908.09398.pdf fig. 2.
         """
 
         return cls(
@@ -402,25 +434,16 @@ class BGLB2(FFModel):
     @classmethod
     def BtoDEllNu_Scaled(cls, tau=False):
         """
-        B -> D* FFs from Svenja. wg1_b2pilnu/Systematics/B2DstFF.ipynb
-        She uses for the dec-file the BGL parameters of https://arxiv.org/pdf/2008.09341v1.pdf TableVI BGl(1,1,2)
-        Also see the dec file: In there, all values are divided already by Vcb*eta_EW = 34.9e-3/0.906. Hammer does
-        this division on its own later.
+        B -> D* FFs from Svenja (wg1_b2pilnu/Systematics/B2DstFF.ipynb), BGL(1,1,2) parameters of
+        https://arxiv.org/pdf/2008.09341v1.pdf table VI, as used (already Vcb-scaled) in the dec file:
         https://stash.desy.de/projects/B2/repos/software/browse/decfiles/dec/DECAY_BELLE2.DEC?at=refs%2Ftags%2Frelease-05-02-00#345,369,3873,3900
-        no correlations or errors needed for the matrix that is only used for the central values.
-        Vcb does not matter here but is 1.0/1.0066
-        Hammer is using the default parameters https://arxiv.org/pdf/1902.09553.pdf that enormously differ from the Belle II input.
-        Maybe this is due to the fact that in the final result of Belle in the paper, the disagreeing lattice QCD results are considered. E.g.
-        the parameters of table IV largely differ from table VI. But Florian says that they don't use the super bad lQCD results?! He claims
-        that they use the untagged analysis while 1902... uses a tagged one. However, both shapes were compared in https://arxiv.org/pdf/1908.09398.pdf
-        fig. 2 (P_D*(w)) and they seem to agree here. I should test this further also with BLPRXP which also uses untagged inputs.
-        Maybe this is also due to some different definitions of the parameters.
-        In the latter case, Hammer will only be consistent with its default parameters...
-        below are the values as they are used in the dec-file, as they are already scaled with Vcb:
-        in EvtGens BGL implementation, a0f is set to zero. This should be analogous to setting the d-vector to zero.
-        cf https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtBGLFF.cc#141
-        vs https://gitlab.com/mpapucci/Hammer/-/blob/development/src/FormFactors/BGL/FFBtoDstarBGL.cc#L175
-        d-vec = 0 -> R0 = 0 -> a0f = 0, c.f. https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtHQET3FF.cc#92
+        Only used for central values, so no correlations/errors needed; Vcb is 1.0/1.0066 but irrelevant here.
+        EvtGen's BGL sets a0f=0 (equivalent to Hammer's d-vector=0), cf.
+        https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtBGLFF.cc#141 vs
+        https://gitlab.com/mpapucci/Hammer/-/blob/development/src/FormFactors/BGL/FFBtoDstarBGL.cc#L175
+        Note: Hammer's own default parameters (https://arxiv.org/pdf/1902.09553.pdf) differ substantially from
+        these Belle II inputs, for reasons not fully understood (possibly differing lattice QCD treatment or
+        parameter definitions) - the shapes were cross-checked and agree in https://arxiv.org/pdf/1908.09398.pdf fig. 2.
         """
 
         return cls(
@@ -468,9 +491,6 @@ class BLPRXP(FFModel):
             Xc="D*",
             lep="Ell",
             params={
-                # "Vcb": uf(3.93e-02, 1.00e-03),
-                # "G1": uf(1.06e+00, 7.00e-03),
-                # "F1": uf(8.95e-01, 1.10e-02),
                 "RhoSq": uf(1.24, 6.00e-02),
                 "chi21": uf(-6.00e-02, 2.00e-02),
                 "chi2p": uf(0.00, 2.00e-02),
@@ -496,168 +516,62 @@ class BLPRXP(FFModel):
             expert_info=cls.BtoDstEllNu_outdated.__func__.__doc__,
         )
 
-    @classmethod
-    def BtoDstEllNu_new(cls, tau: bool = False):
-        """
+    # Shared fit result for BtoDstEllNu_new/BtoDEllNu_new: Florian said to take the first
+    # column of https://arxiv.org/pdf/2206.11281.pdf table VII (L^{D;D*}_{w>=1;=1}), which
+    # applies to both D and D* - same params/correlations (Table X), only Xc differs.
+    _BLPRXP_NEW_DOC = """
         compare with https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBLPRXPBase.cc;
-        https://arxiv.org/pdf/2206.11281.pdf, table VII, Florian told me to take the first column, i.e.
-        L^{D;D*}_{w>=1;=1}.
+        https://arxiv.org/pdf/2206.11281.pdf, table VII, first column (L^{D;D*}_{w>=1;=1}).
         Vcb cancels in nominator and denominator. Correlations: Table X
         THIS IS NOT PART OF HAMMERS OFFICIAL LAST VERSION YET! -> see development branch, there the central
         values agree
         """
+    _BLPRXP_NEW_PARAMS = {
+        "RhoStSq": uf(1.10, 0.04),
+        "cSt": uf(2.39, 0.18),
+        "mb": uf(4.71, 0.05),
+        "DelMbc": {"DelMbc": uf(3.41, 0.02), "mc": uf(1.30, 0.00)},
+        "la2": uf(0.12, 0.02),
+        "eta1": uf(0.34, 0.04),
+        "rho1": uf(-0.36, 0.24),
+        "chi21": uf(-0.12, 0.02),
+        "phi1p": uf(0.25, 0.21),
+    }
+    _BLPRXP_NEW_PARAM_INIT = "{RhoStSq: %f, cSt: %f, mb: %f, mc: %f, la2: %f, eta1: %f, rho1: %f, chi21: %f, phi1p: %f, chi2p: 0.0, chi3p: 0.0, etap: 0.0, beta21: 0.0, beta3p: 0.0}"
+    _BLPRXP_NEW_CORR_MATRIX = np.array(
+        [
+            [1.000, 0.357, -0.720, 0.107, 0.034, 0.421, -0.075, -0.473, -0.632],
+            [0.357, 1.000, -0.460, 0.048, -0.056, 0.383, -0.076, -0.647, -0.112],
+            [-0.720, -0.460, 1.000, 0.028, 0.008, -0.429, -0.007, 0.369, 0.362],
+            [0.107, 0.048, 0.028, 1.000, 0.009, 0.108, 0.477, -0.089, 0.011],
+            [0.034, -0.056, 0.008, 0.009, 1.000, -0.255, -0.094, -0.034, -0.006],
+            [0.421, 0.383, -0.429, 0.108, -0.255, 1.000, -0.379, -0.374, 0.189],
+            [-0.075, -0.076, -0.007, 0.477, -0.094, -0.379, 1.000, 0.105, -0.279],
+            [-0.473, -0.647, 0.369, -0.089, -0.034, -0.374, 0.105, 1.000, 0.305],
+            [-0.632, -0.112, 0.362, 0.011, -0.006, 0.189, -0.279, 0.305, 1.000],
+        ]
+    )
 
+    @classmethod
+    def BtoDstEllNu_new(cls, tau: bool = False):
         return cls(
             Xc="D*",
             lep="Ell" if not tau else "Tau",
-            params={
-                "RhoStSq": uf(1.10, 0.04),
-                "cSt": uf(2.39, 0.18),
-                "mb": uf(4.71, 0.05),
-                "DelMbc": {"DelMbc": uf(3.41, 0.02), "mc": uf(1.30, 0.00)},
-                "la2": uf(0.12, 0.02),
-                "eta1": uf(0.34, 0.04),
-                "rho1": uf(-0.36, 0.24),
-                "chi21": uf(-0.12, 0.02),
-                "phi1p": uf(0.25, 0.21),
-            },
-            param_init="{RhoStSq: %f, cSt: %f, mb: %f, mc: %f, la2: %f, eta1: %f, rho1: %f, chi21: %f, phi1p: %f, chi2p: 0.0, chi3p: 0.0, etap: 0.0, beta21: 0.0, beta3p: 0.0}",
-            corr_matrix=np.array(
-                [
-                    [1.000, 0.357, -0.720, 0.107, 0.034, 0.421, -0.075, -0.473, -0.632],
-                    [
-                        0.357,
-                        1.000,
-                        -0.460,
-                        0.048,
-                        -0.056,
-                        0.383,
-                        -0.076,
-                        -0.647,
-                        -0.112,
-                    ],
-                    [-0.720, -0.460, 1.000, 0.028, 0.008, -0.429, -0.007, 0.369, 0.362],
-                    [0.107, 0.048, 0.028, 1.000, 0.009, 0.108, 0.477, -0.089, 0.011],
-                    [
-                        0.034,
-                        -0.056,
-                        0.008,
-                        0.009,
-                        1.000,
-                        -0.255,
-                        -0.094,
-                        -0.034,
-                        -0.006,
-                    ],
-                    [0.421, 0.383, -0.429, 0.108, -0.255, 1.000, -0.379, -0.374, 0.189],
-                    [
-                        -0.075,
-                        -0.076,
-                        -0.007,
-                        0.477,
-                        -0.094,
-                        -0.379,
-                        1.000,
-                        0.105,
-                        -0.279,
-                    ],
-                    [
-                        -0.473,
-                        -0.647,
-                        0.369,
-                        -0.089,
-                        -0.034,
-                        -0.374,
-                        0.105,
-                        1.000,
-                        0.305,
-                    ],
-                    [-0.632, -0.112, 0.362, 0.011, -0.006, 0.189, -0.279, 0.305, 1.000],
-                ]
-            ),
-            expert_info=cls.BtoDstEllNu_new.__func__.__doc__,
+            params=cls._BLPRXP_NEW_PARAMS,
+            param_init=cls._BLPRXP_NEW_PARAM_INIT,
+            corr_matrix=cls._BLPRXP_NEW_CORR_MATRIX,
+            expert_info=cls._BLPRXP_NEW_DOC,
         )
 
     @classmethod
     def BtoDEllNu_new(cls, tau: bool = False):
-        """
-        compare with https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBLPRXPBase.cc;
-        https://arxiv.org/pdf/2206.11281.pdf, table VII, Florian told me to take the first column, i.e.
-        L^{D;D*}_{w>=1;=1}.
-        Vcb cancels in nominator and denominator. Correlations: Table X
-        THIS IS NOT PART OF HAMMERS OFFICIAL LAST VERSION YET! -> see development branch, there the central
-        values agree
-        """
-
         return cls(
             Xc="D",
             lep="Ell" if not tau else "Tau",
-            params={
-                "RhoStSq": uf(1.10, 0.04),
-                "cSt": uf(2.39, 0.18),
-                "mb": uf(4.71, 0.05),
-                "DelMbc": {"DelMbc": uf(3.41, 0.02), "mc": uf(1.30, 0.00)},
-                "la2": uf(0.12, 0.02),
-                "eta1": uf(0.34, 0.04),
-                "rho1": uf(-0.36, 0.24),
-                "chi21": uf(-0.12, 0.02),
-                "phi1p": uf(0.25, 0.21),
-            },
-            param_init="{RhoStSq: %f, cSt: %f, mb: %f, mc: %f, la2: %f, eta1: %f, rho1: %f, chi21: %f, phi1p: %f, chi2p: 0.0, chi3p: 0.0, etap: 0.0, beta21: 0.0, beta3p: 0.0}",
-            corr_matrix=np.array(
-                [
-                    [1.000, 0.357, -0.720, 0.107, 0.034, 0.421, -0.075, -0.473, -0.632],
-                    [
-                        0.357,
-                        1.000,
-                        -0.460,
-                        0.048,
-                        -0.056,
-                        0.383,
-                        -0.076,
-                        -0.647,
-                        -0.112,
-                    ],
-                    [-0.720, -0.460, 1.000, 0.028, 0.008, -0.429, -0.007, 0.369, 0.362],
-                    [0.107, 0.048, 0.028, 1.000, 0.009, 0.108, 0.477, -0.089, 0.011],
-                    [
-                        0.034,
-                        -0.056,
-                        0.008,
-                        0.009,
-                        1.000,
-                        -0.255,
-                        -0.094,
-                        -0.034,
-                        -0.006,
-                    ],
-                    [0.421, 0.383, -0.429, 0.108, -0.255, 1.000, -0.379, -0.374, 0.189],
-                    [
-                        -0.075,
-                        -0.076,
-                        -0.007,
-                        0.477,
-                        -0.094,
-                        -0.379,
-                        1.000,
-                        0.105,
-                        -0.279,
-                    ],
-                    [
-                        -0.473,
-                        -0.647,
-                        0.369,
-                        -0.089,
-                        -0.034,
-                        -0.374,
-                        0.105,
-                        1.000,
-                        0.305,
-                    ],
-                    [-0.632, -0.112, 0.362, 0.011, -0.006, 0.189, -0.279, 0.305, 1.000],
-                ]
-            ),
-            expert_info=cls.BtoDEllNu_new.__func__.__doc__,
+            params=cls._BLPRXP_NEW_PARAMS,
+            param_init=cls._BLPRXP_NEW_PARAM_INIT,
+            corr_matrix=cls._BLPRXP_NEW_CORR_MATRIX,
+            expert_info=cls._BLPRXP_NEW_DOC,
         )
 
 
@@ -676,7 +590,7 @@ class BLR(FFModel):
     @classmethod
     def BtoD1EllNu_dec(cls, tau: bool = False):
         """
-        B -> D_1 and B -> D_2* FFs from module import symbol
+        B -> D_1 and B -> D_2* FFs from
         the dec file https://stash.desy.de/projects/B2/repos/software/browse/decfiles/dec/DECAY_BELLE2.DEC?at=refs%2Ftags%2Frelease-05-02-00#347,350
         as extrapolated from HAMMER: https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1LLSW.cc#L54
         for mb and mc see https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtLLSWFF.cc#44
@@ -696,8 +610,7 @@ class BLR(FFModel):
                 "tp": uf(-1.60, 0.20),
                 "tau1": uf(-0.50, 0.30),
                 "tau2": uf(2.90, 1.60),
-                # "laB": "0.40, this is not in the dec file but only in HAMMER!!
-                # "laP": "0.80" this is not in the dec file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laP=0.80; not in the dec file, left at defaults
             },
             param_init="{t1: %f, tp: %f, tau1: %f, tau2: %f, mb: 4.2, mc: 1.4}",
             corr_matrix=np.array(
@@ -714,7 +627,7 @@ class BLR(FFModel):
     @classmethod
     def BtoD2stEllNu_dec(cls, tau: bool = False):
         """
-        B -> D_1 and B -> D_2* FFs from module import symbol
+        B -> D_1 and B -> D_2* FFs from
         the dec file https://stash.desy.de/projects/B2/repos/software/browse/decfiles/dec/DECAY_BELLE2.DEC?at=refs%2Ftags%2Frelease-05-02-00#347,350
         as extrapolated from HAMMER: https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1LLSW.cc#L54
         for mb and mc see https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtLLSWFF.cc#44
@@ -734,8 +647,7 @@ class BLR(FFModel):
                 "tp": uf(-1.60, 0.20),
                 "tau1": uf(-0.50, 0.30),
                 "tau2": uf(2.90, 1.60),
-                # "laB": "0.40, this is not in the dec file but only in HAMMER!!
-                # "laP": "0.80" this is not in the dec file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laP=0.80; not in the dec file, left at defaults
             },
             param_init="{t1: %f, tp: %f, tau1: %f, tau2: %f, mb: 4.2, mc: 1.4}",
             corr_matrix=np.array(
@@ -753,7 +665,7 @@ class BLR(FFModel):
     def BtoD0stEllNu_dec(cls, tau: bool = False):
         """
         B -> D_0* and B -> D'_1 FFs from the dec file https://stash.desy.de/projects/B2/repos/software/browse/decfiles/dec/DECAY_BELLE2.DEC?at=refs%2Ftags%2Frelease-05-02-00#348-349
-        #https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD0starLLSW.cc#L54
+        https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD0starLLSW.cc#L54
         for mb and mc see https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtLLSWFF.cc#27
         Everybody always cites https://arxiv.org/pdf/hep-ph/9705467.pdf but these exact numbers are from
         https://arxiv.org/pdf/1606.09300.pdf table X approx C. Correlations are eq. 33 of the same paper.
@@ -770,8 +682,7 @@ class BLR(FFModel):
                 "zt1": uf(0.68, 0.20),
                 "ztp": uf(-0.20, 1.20),
                 "zeta1": uf(0.30, 0.30),
-                #    "laB": "0.40",  # this is not in the dec file but only in HAMMER!!
-                #    "laS": "0.76",  # this is not in the dec file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laS=0.76; not in the dec file, left at defaults
             },
             param_init="{zt1: %f, ztp: %f, zeta1: %f, mb: 4.2, mc: 1.4}",
             corr_matrix=np.array(
@@ -788,7 +699,7 @@ class BLR(FFModel):
     def BtoD1prEllNu_dec(cls, tau: bool = False):
         """
         B -> D_0* and B -> D'_1 FFs from the dec file https://stash.desy.de/projects/B2/repos/software/browse/decfiles/dec/DECAY_BELLE2.DEC?at=refs%2Ftags%2Frelease-05-02-00#348-349
-        #https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD0starLLSW.cc#L54
+        https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD0starLLSW.cc#L54
         for mb and mc see https://stash.desy.de/projects/B2/repos/basf2/browse/generators/evtgen/models/src/EvtLLSWFF.cc#27
         Everybody always cites https://arxiv.org/pdf/hep-ph/9705467.pdf but these exact numbers are from
         https://arxiv.org/pdf/1606.09300.pdf table X approx C. Correlations are eq. 33 of the same paper.
@@ -805,8 +716,7 @@ class BLR(FFModel):
                 "zt1": uf(0.68, 0.20),
                 "ztp": uf(-0.20, 1.20),
                 "zeta1": uf(0.30, 0.30),
-                #    "laB": "0.40",  # this is not in the dec file but only in HAMMER!!
-                #    "laS": "0.76",  # this is not in the dec file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laS=0.76; not in the dec file, left at defaults
             },
             param_init="{zt1: %f, ztp: %f, zeta1: %f, mb: 4.2, mc: 1.4}",
             corr_matrix=np.array(
@@ -822,10 +732,9 @@ class BLR(FFModel):
     @classmethod
     def BtoD1EllNu_new(cls, tau: bool = False):
         """
-        # new values from https://arxiv.org/pdf/1711.03110.pdf table V. These include the alpha-s variation and
-        # are an update of https://arxiv.org/pdf/1606.09300.pdf. The new mb and mc values are taken from
-        # HAMMER: https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
-        # probably, they are the largest difference...
+        New values from https://arxiv.org/pdf/1711.03110.pdf table V, including the alpha-s
+        variation; an update of https://arxiv.org/pdf/1606.09300.pdf. mb, mc taken from HAMMER:
+        https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
         """
 
         return cls(
@@ -836,8 +745,7 @@ class BLR(FFModel):
                 "tp": uf(-1.60, 0.20),
                 "tau1": uf(-0.50, 0.30),
                 "tau2": uf(2.90, 1.40),
-                # "laB": "0.40, this is not in the dec file but only in HAMMER!!
-                # "laP": "0.80" this is not in the dec file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laP=0.80; not in the dec file, left at defaults
             },
             param_init="{t1: %f, tp: %f, tau1: %f, tau2: %f, mb: 4.71, mc: 1.31}",
             corr_matrix=np.array(
@@ -854,10 +762,9 @@ class BLR(FFModel):
     @classmethod
     def BtoD2stEllNu_new(cls, tau: bool = False):
         """
-        # new values from https://arxiv.org/pdf/1711.03110.pdf table V. These include the alpha-s variation and
-        # are an update of https://arxiv.org/pdf/1606.09300.pdf. The new mb and mc values are taken from
-        # HAMMER: https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
-        # probably, they are the largest difference...
+        New values from https://arxiv.org/pdf/1711.03110.pdf table V, including the alpha-s
+        variation; an update of https://arxiv.org/pdf/1606.09300.pdf. mb, mc taken from HAMMER:
+        https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
         """
 
         return cls(
@@ -868,8 +775,7 @@ class BLR(FFModel):
                 "tp": uf(-1.60, 0.20),
                 "tau1": uf(-0.50, 0.30),
                 "tau2": uf(2.90, 1.40),
-                # "laB": "0.40, this is not in the dec file but only in HAMMER!!
-                # "laP": "0.80" this is not in the dec file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laP=0.80; not in the dec file, left at defaults
             },
             param_init="{t1: %f, tp: %f, tau1: %f, tau2: %f, mb: 4.71, mc: 1.31}",
             corr_matrix=np.array(
@@ -886,10 +792,9 @@ class BLR(FFModel):
     @classmethod
     def BtoD0stEllNu_new(cls, tau: bool = False):
         """
-        # new values from https://arxiv.org/pdf/1711.03110.pdf table V. These include the alpha-s variation and
-        # are an update of https://arxiv.org/pdf/1606.09300.pdf. The new mb and mc values are taken from
-        # HAMMER: https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
-        # probably, they are the largest difference...
+        New values from https://arxiv.org/pdf/1711.03110.pdf table V, including the alpha-s
+        variation; an update of https://arxiv.org/pdf/1606.09300.pdf. mb, mc taken from HAMMER:
+        https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
         """
 
         return cls(
@@ -899,8 +804,7 @@ class BLR(FFModel):
                 "zt1": uf(0.70, 0.21),
                 "ztp": uf(0.20, 1.40),
                 "zeta1": uf(0.60, 0.30),
-                #    "laB": "0.40",  # this is not in the new file but only in HAMMER!!
-                #    "laS": "0.76",  # this is not in the new file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laS=0.76; not in the dec file, left at defaults
             },
             param_init="{zt1: %f, ztp: %f, zeta1: %f, mb: 4.71, mc: 1.31}",
             corr_matrix=np.array(
@@ -916,10 +820,9 @@ class BLR(FFModel):
     @classmethod
     def BtoD1prEllNu_new(cls, tau: bool = False):
         """
-        # new values from https://arxiv.org/pdf/1711.03110.pdf table V. These include the alpha-s variation and
-        # are an update of https://arxiv.org/pdf/1606.09300.pdf. The new mb and mc values are taken from
-        # HAMMER: https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
-        # probably, they are the largest difference...
+        New values from https://arxiv.org/pdf/1711.03110.pdf table V, including the alpha-s
+        variation; an update of https://arxiv.org/pdf/1606.09300.pdf. mb, mc taken from HAMMER:
+        https://gitlab.com/mpapucci/Hammer/-/blob/master/src/FormFactors/FFBtoD1BLR.cc#L54-55
         """
 
         return cls(
@@ -929,8 +832,7 @@ class BLR(FFModel):
                 "zt1": uf(0.70, 0.21),
                 "ztp": uf(0.20, 1.40),
                 "zeta1": uf(0.60, 0.30),
-                #    "laB": "0.40",  # this is not in the new file but only in HAMMER!!
-                #    "laS": "0.76",  # this is not in the new file but only in HAMMER!!
+                # HAMMER also has laB=0.40, laS=0.76; not in the dec file, left at defaults
             },
             param_init="{zt1: %f, ztp: %f, zeta1: %f, mb: 4.71, mc: 1.31}",
             corr_matrix=np.array(
@@ -1005,9 +907,9 @@ class CLN(FFModel):
             corr_matrix=np.array(
                 [
                     [1.000, 0.751, 0.000],
-                    # assuming that Vcb is a constant factor that does not change the correlation at all
+                    # Vcb assumed a constant factor that does not affect the correlation
                     [0.751, 1.000, 0.000],
-                    [0.000, 0.000, 1.000],  ####TODO: What about the last param?
+                    [0.000, 0.000, 1.000],  # TODO: Delta's correlation to G1/RhoSq is unknown
                 ]
             ),
             expert_info=cls.BtoDTauNu_dec.__func__.__doc__,
@@ -1028,7 +930,7 @@ class CLN(FFModel):
             params={
                 "F1": uf(0.912, 0.014),
                 "RhoSq": uf(1.205, 0.026),
-                "R0": uf(1.150, 0),  # TODO! I did not find R0 yet.
+                "R0": uf(1.150, 0),  # TODO: source/uncertainty for R0 not found yet
                 "R1": uf(1.404, 0.032),
                 "R2": uf(0.854, 0.020),
             },
@@ -1036,19 +938,15 @@ class CLN(FFModel):
             corr_matrix=np.array(
                 [
                     [1.000, 0.338, 0.000, -0.104, -0.071],
-                    # assuming that Vcb is a constant factor that does not change the correlation at all
+                    # Vcb assumed a constant factor that does not affect the correlation
                     [0.338, 1.000, 0.000, 0.570, -0.810],
-                    [0.000, 0.000, 1.000, 0.000, 0.000],
-                    ####TODO: What about R0?
+                    [0.000, 0.000, 1.000, 0.000, 0.000],  # TODO: R0's correlation to others is unknown
                     [-0.104, 0.570, 0.000, 1.000, -0.758],
                     [-0.071, -0.810, 0.000, -0.758, 1.000],
                 ]
             ),
             expert_info=cls.BtoDstTauNu_dec.__func__.__doc__,
         )
-
-
-from sysvar.visualize import Visualizer
 
 
 class FFModelVisualizer(Visualizer):
@@ -1188,7 +1086,6 @@ class FFModelVisualizer(Visualizer):
         )
         ax.set_xlabel("FF model parameters")
         ax.set_ylabel("Value")
-        # ax.set_title("Model parameter values")
 
         if save:
             self.instance.saving_info["namespace"] = ["ff_model", "params"]

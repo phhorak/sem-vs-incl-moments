@@ -47,6 +47,46 @@ GAP_MODES = [
         "ls":       ":",
         "lw":       1.6,
     },
+    {
+        "mode":     "D0stDeta",
+        "category": r"gap: $D_0^*{\to}D\eta$",
+        "label":    r"$B\!\to\!(D_0^*\!\to\!D\eta)\,\ell\nu$",
+        "color":    "#a6cee3",
+        "ls":       "-",
+        "lw":       1.6,
+    },
+    {
+        "mode":     "D1_2550Deta",
+        "category": r"gap: $D_1(2550){\to}D\eta$",
+        "label":    r"$B\!\to\!(D_1(2550)\!\to\!D\eta)\,\ell\nu$",
+        "color":    "#fb9a99",
+        "ls":       "--",
+        "lw":       1.6,
+    },
+    {
+        "mode":     "D1Dgamma",
+        "category": r"gap: $D_1{\to}D\gamma$",
+        "label":    r"$B\!\to\!(D_1\!\to\!D\gamma)\,\ell\nu$",
+        "color":    "#cab2d6",
+        "ls":       "-.",
+        "lw":       1.6,
+    },
+    {
+        "mode":     "D0pipipipenu",
+        "category": r"gap: $D_1{\to}D\pi\pi\pi$",
+        "label":    r"$B\!\to\!(D_1\!\to\!D\pi\pi\pi)\,\ell\nu$",
+        "color":    "#fdbf6f",
+        "ls":       "-",
+        "lw":       1.6,
+    },
+    {
+        "mode":     "Dst0pipipipenu",
+        "category": r"gap: $D_2^*{\to}D^*\pi\pi\pi$",
+        "label":    r"$B\!\to\!(D_2^*\!\to\!D^*\pi\pi\pi)\,\ell\nu$",
+        "color":    "#b2df8a",
+        "ls":       "--",
+        "lw":       1.6,
+    },
 ]
 
 GAP_MODES_BY_NAME = {m["mode"]: m for m in GAP_MODES}

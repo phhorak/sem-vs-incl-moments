@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Generate signal MC with EvtGen and reconstruct B -> Xc e nu in one step.
-One job per mode; mode determines which decay.dec and which findMCDecay to run.
+"""Generate signal MC with EvtGen and reconstruct B -> Xc l nu (l = e, mu) in one step.
+One job per mode; mode determines which decay.dec and which findMCDecay strings to run.
+
+Every job runs findMCDecay twice against the same generated sample -- once for the
+electron-flavor decay string, once for the muon-flavor one -- and merges the two matched
+lists with an extraInfo(decayModeID) tag (0=electron, 1=muon). This is required for the
+gap-mode decfiles, which generate a 50/50 e/mu split per event: truth-matching only the
+electron half would silently discard the muon half. For single-flavor cocktail decfiles
+the non-matching flavor's findMCDecay call is harmless -- it just returns zero candidates.
 """
 
 import argparse
+import re
 import os
 import basf2 as b2
 import modularAnalysis as ma
@@ -40,7 +48,7 @@ MODES = {
     'Bplus/Dstmpipizenu': 'B+ -> e+ D*- pi+ pi0 nu_e ?gamma ?addbrems ...',
     'Bplus/Dst0pizpizenu':'B+ -> e+ anti-D*0 pi0 pi0 nu_e ?gamma ?addbrems ...',
     'Bplus/DsstkKenu':    'B+ -> e+ D_s*- K+ nu_e ?gamma ?addbrems ...',
-    'Bplus/DsKenu':       'B+ -> e+ anti-D_0*0 nu_e ?gamma ?addbrems ...',
+    'Bplus/DsKenu':       'B+ -> e+ D_s- K+ nu_e ?gamma ?addbrems ...',
     'Bplus/D0etaenu':     'B+ -> e+ anti-D0 eta nu_e ?gamma ?addbrems ...',
     'Bplus/Dst0etaenu':   'B+ -> e+ anti-D*0 eta nu_e ?gamma ?addbrems ...',
     # gap modes (both prefixed and bare keys for flexible submission)
@@ -49,8 +57,13 @@ MODES = {
     'gap_modes/Bplus/Dp1DstEta': "B+ -> e+ anti-D'_10 nu_e ?gamma ?addbrems ...",
     'gap_modes/Bplus/Dp1Deta':   "B+ -> e+ anti-D'_10 nu_e ?gamma ?addbrems ...",
     'gap_modes/Bplus/DsKenu':    'B+ -> e+ anti-D_0*0 nu_e ?gamma ?addbrems ...',
-    'gap_modes/Bplus/LcPenu':    'B+ -> e+ anti-D_0*0 nu_e ?gamma ?addbrems ...',
-    'Bplus/D2stDeta':            'B+ -> e+ anti-D_2*0 nu_e ?gamma ?addbrems ...',
+    'gap_modes/Bplus/LcPenu':         'B+ -> e+ anti-D_0*0 nu_e ?gamma ?addbrems ...',
+    'gap_modes/Bplus/D0stDeta':       'B+ -> e+ nu_e ... ?gamma ?addbrems',
+    'gap_modes/Bplus/D1_2550Deta':    'B+ -> e+ nu_e ... ?gamma ?addbrems',
+    'gap_modes/Bplus/D1Dgamma':       'B+ -> e+ anti-D_10 nu_e ?gamma ?addbrems ...',
+    'gap_modes/Bplus/D0pipipipenu':   'B+ -> e+ nu_e ... ?gamma ?addbrems',
+    'gap_modes/Bplus/Dst0pipipipenu': 'B+ -> e+ nu_e ... ?gamma ?addbrems',
+    'Bplus/D2stDeta':                 'B+ -> e+ anti-D_2*0 nu_e ?gamma ?addbrems ...',
     'Bplus/DummyDeta':           'B+ -> e+ anti-D_0*0 nu_e ?gamma ?addbrems ...',
     'Bplus/Dp1DstEta':           "B+ -> e+ anti-D'_10 nu_e ?gamma ?addbrems ...",
     'Bplus/Dp1Deta':             "B+ -> e+ anti-D'_10 nu_e ?gamma ?addbrems ...",
@@ -74,14 +87,52 @@ MODES = {
     'B0/Dstpizpizenu':    'anti-B0 -> e- D*+ pi0 pi0 anti-nu_e ?gamma ?addbrems ...',
     'B0/Detaenu':         'anti-B0 -> e- D+ eta anti-nu_e ?gamma ?addbrems ...',
     'B0/Dstetaenu':       'anti-B0 -> e- D*+ eta anti-nu_e ?gamma ?addbrems ...',
+    # B0 gap modes (isospin partners of the Bplus gap modes above; full-isospin generalization)
+    'gap_modes/B0/D2stDeta':        'anti-B0 -> e- D_2*+ anti-nu_e ?gamma ?addbrems ...',
+    'gap_modes/B0/DummyDeta':       'anti-B0 -> e- D_0*+ anti-nu_e ?gamma ?addbrems ...',
+    'gap_modes/B0/Dp1DstEta':       "anti-B0 -> e- D'_1+ anti-nu_e ?gamma ?addbrems ...",
+    'gap_modes/B0/Dp1Deta':         "anti-B0 -> e- D'_1+ anti-nu_e ?gamma ?addbrems ...",
+    'gap_modes/B0/DsKenu':          'anti-B0 -> e- D_0*+ anti-nu_e ?gamma ?addbrems ...',
+    'gap_modes/B0/LcPenu':          'anti-B0 -> e- D_0*+ anti-nu_e ?gamma ?addbrems ...',
+    'gap_modes/B0/D0stDeta':        'anti-B0 -> e- anti-nu_e ... ?gamma ?addbrems',
+    'gap_modes/B0/D1_2550Deta':     'anti-B0 -> e- anti-nu_e ... ?gamma ?addbrems',
+    'gap_modes/B0/D1Dgamma':        'anti-B0 -> e- D_1+ anti-nu_e ?gamma ?addbrems ...',
+    'gap_modes/B0/D0pipipipenu':    'anti-B0 -> e- anti-nu_e ... ?gamma ?addbrems',
+    'gap_modes/B0/Dst0pipipipenu':  'anti-B0 -> e- anti-nu_e ... ?gamma ?addbrems',
 }
 
-if args.mode not in MODES:
-    raise ValueError(f'unknown mode {args.mode!r}')
 
-decay_str = MODES[args.mode]
-is_Bplus  = args.mode.startswith('Bplus')
-B_list    = 'B+:reco' if is_Bplus else 'anti-B0:reco'
+def _lepton_swap(decay_str):
+    """Convert an electron-flavor findMCDecay string to its muon-flavor equivalent."""
+    s = decay_str
+    s = re.sub(r'\banti-nu_e\b', 'anti-nu_mu', s)
+    s = re.sub(r'(?<![\w-])nu_e\b', 'nu_mu', s)
+    s = re.sub(r'(?<![\w-])e\+', 'mu+', s)
+    s = re.sub(r'(?<![\w-])e-(?!\w)', 'mu-', s)
+    return s
+
+
+def _family_key(mode):
+    """Cocktail muon modes (e.g. 'Bplus/Dmunu') share their electron sibling's MODES entry;
+    the muon findMCDecay string is derived from it via _lepton_swap. Gap-mode keys have no
+    lepton suffix and pass through unchanged (both flavors already have their own MODES entry
+    where needed, or share one bare key for gap modes with an inline 50/50 e/mu decfile)."""
+    if mode.endswith('munu'):
+        return mode[:-4] + 'enu'
+    return mode
+
+
+lookup_key = _family_key(args.mode)
+if lookup_key not in MODES:
+    raise ValueError(f'unknown mode {args.mode!r} (resolved to {lookup_key!r})')
+
+decay_str_e  = MODES[lookup_key]
+decay_str_mu = _lepton_swap(decay_str_e)
+is_Bplus     = 'Bplus' in args.mode
+base_particle = 'B+' if is_Bplus else 'anti-B0'
+B_list    = f'{base_particle}:reco'
+B_list_e  = f'{base_particle}:reco_e'
+B_list_mu = f'{base_particle}:reco_mu'
 
 # ── basf2 path ────────────────────────────────────────────────────────────────
 
@@ -89,8 +140,16 @@ main = b2.create_path()
 main.add_module('EventInfoSetter', evtNumList=args.nevents)
 add_evtgen_generator(path=main, finalstate='signal', signaldecfile=args.dec_file)
 
-ma.findMCDecay(B_list, decay_str, appendAllDaughters=True, path=main)
-ma.matchMCTruth(B_list, path=main)
+# Two independent truth-matching passes over the same generated sample: one per lepton
+# flavor. Whichever flavor a given decfile/event doesn't produce simply yields zero
+# candidates for that pass -- harmless. decayModeID (0=e, 1=mu) tags provenance downstream.
+ma.findMCDecay(B_list_e,  decay_str_e,  appendAllDaughters=True, path=main)
+ma.findMCDecay(B_list_mu, decay_str_mu, appendAllDaughters=True, path=main)
+ma.matchMCTruth(B_list_e,  path=main)
+ma.matchMCTruth(B_list_mu, path=main)
+ma.variablesToExtraInfo(B_list_e,  {'constant(0)': 'decayModeID'}, path=main)
+ma.variablesToExtraInfo(B_list_mu, {'constant(1)': 'decayModeID'}, path=main)
+ma.copyLists(B_list, [B_list_e, B_list_mu], path=main)
 
 # ── variables ─────────────────────────────────────────────────────────────────
 
@@ -151,6 +210,7 @@ variables = [
     *daughter_vars,
     *hammer_daughter_vars,
     'eventRandom',
+    'extraInfo(decayModeID)',
 ]
 
 ma.variablesToNtuple(B_list, variables=variables,

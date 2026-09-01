@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """Step 2: Digitize invariant-mass spectra from reference plot images.
 
 Targets:
@@ -8,6 +7,8 @@ Targets:
 
 Writes to output/2/ (JSON + CSV) and figures/2/ (overlay + curve PNGs).
 """
+from __future__ import annotations
+
 import argparse
 import json
 from dataclasses import dataclass
@@ -20,7 +21,6 @@ import yaml
 from PIL import Image
 from scipy import ndimage as ndi
 from scipy.optimize import curve_fit
-import plothist
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", default="config.yaml")
@@ -269,87 +269,71 @@ def _extract_dsk_points(rgb, box):
     return df.loc[keep].reset_index(drop=True)
 
 
-def _extract_black_points_with_errors(rgb, box):
+def _extract_red_histogram(rgb, box, scfg):
+    """Digitize a red step-function histogram inside the plot box.
+
+    Returns a DataFrame with columns x_lo, x_hi, x_mid, y (physical units).
+    """
     x0, x1, y0, y1 = box
-    roi          = rgb[y0:y1 + 1, x0:x1 + 1]
-    h_roi, w_roi = roi.shape[:2]
-    ix0, ix1     = int(0.14 * w_roi), int(0.93 * w_roi)
-    iy0, iy1     = int(0.04 * h_roi), int(0.88 * h_roi)
-    sub          = roi[iy0:iy1, ix0:ix1]
-    rr, gg, bb   = [sub[..., i].astype(np.int16) for i in range(3)]
+    roi = rgb[y0:y1 + 1, x0:x1 + 1]
+    mask = _color_mask(roi, "red")
 
-    black  = (rr < 75) & (gg < 75) & (bb < 75) & (np.abs(rr - gg) < 20) & (np.abs(rr - bb) < 20)
-    lab, n = ndi.label(black)
-    if n <= 0:
-        raise RuntimeError("No black components found.")
-    objs       = ndi.find_objects(lab)
-    candidates = []
-    for i, s in enumerate(objs, start=1):
-        if s is None:
-            continue
-        blob = lab[s] == i
-        area = int(blob.sum())
-        h = int(s[0].stop - s[0].start); w = int(s[1].stop - s[1].start)
-        if area < 25 or area > 1200 or w < 3 or h < 6:
-            continue
-        if max(w / max(h, 1), h / max(w, 1)) > 8.5 or h > 120 or w > 40:
-            continue
-        yy, xx = np.where(blob)
-        cx  = float(xx.mean() + s[1].start + ix0)
-        cy  = float(yy.mean() + s[0].start + iy0)
-        ye  = 0.5 * max(1.0, float(yy.max() - yy.min() + s[0].start - s[0].start))
-        candidates.append((cx, cy, ye))
+    n_cols = mask.shape[1]
 
-    if len(candidates) < 10:
-        raise RuntimeError("Too few dsk black-point candidates after filtering.")
+    # Scan each pixel column: find the topmost red pixel (histogram top edge).
+    col_top = np.full(n_cols, np.nan)
+    for col in range(n_cols):
+        ys = np.where(mask[:, col])[0]
+        if ys.size > 0:
+            col_top[col] = float(ys.min())
 
-    candidates.sort(key=lambda t: t[0])
-    merged = []
-    for cx, cy, ye in candidates:
-        if not merged or abs(cx - merged[-1][0]) > 18.0:
-            merged.append([cx, cy, ye, 1.0])
+    # Smooth out single-pixel gaps with forward-fill, then cluster into bins.
+    valid = np.where(~np.isnan(col_top))[0]
+    if len(valid) == 0:
+        raise RuntimeError("No red histogram pixels found.")
+
+    # Forward-fill gaps ≤ 3 pixels wide.
+    filled = col_top.copy()
+    last_val, gap = np.nan, 0
+    for c in range(n_cols):
+        if not np.isnan(filled[c]):
+            last_val, gap = filled[c], 0
         else:
-            m   = merged[-1]; wgt = m[3] + 1.0
-            m[0] = (m[0] * m[3] + cx) / wgt
-            m[1] = (m[1] * m[3] + cy) / wgt
-            m[2] = (m[2] * m[3] + ye) / wgt
-            m[3] = wgt
+            gap += 1
+            if gap <= 3 and not np.isnan(last_val):
+                filled[c] = last_val
 
-    arr = np.asarray([[m[0], m[1], m[2]] for m in merged], dtype=float)
-    if arr.shape[0] >= 10:
-        keep = np.ones(len(arr), dtype=bool)
-        for _ in range(2):
-            xi, yi = arr[keep, 0], arr[keep, 1]
-            if len(xi) < 8:
-                break
-            co   = np.polyfit(xi, yi, deg=min(5, len(xi) - 1))
-            yhat = np.polyval(co, arr[:, 0])
-            res  = arr[:, 1] - yhat
-            med  = float(np.median(res[keep]))
-            mad  = float(np.median(np.abs(res[keep] - med)))
-            sig  = 1.4826 * mad if mad > 0 else float(np.std(res[keep]))
-            if not np.isfinite(sig) or sig <= 0:
-                break
-            new_keep = np.abs(res - med) < 2.8 * sig
-            if np.sum(new_keep) >= 12:
-                keep = new_keep
-        arr = arr[keep]
+    # Detect step edges: columns where the top-pixel row changes significantly.
+    valid2 = np.where(~np.isnan(filled))[0]
+    tops = filled[valid2]
+    diffs = np.abs(np.diff(tops))
+    step_threshold = 3.0  # pixels
+    edges = valid2[np.where(diffs > step_threshold)[0] + 1].tolist()
+    edges = [int(valid2[0])] + edges + [int(valid2[-1]) + 1]
 
-    x_px  = arr[:, 0] + x0; y_px = arr[:, 1] + y0; yerr_px = arr[:, 2]
-    x_norm = (x_px - x0) / max(1.0, x1 - x0)
-    y_norm = 1.0 - (y_px - y0) / max(1.0, y1 - y0)
-    yerr_norm = yerr_px / max(1.0, y1 - y0)
-    keep = np.ones_like(x_norm, dtype=bool)
-    keep &= ~((x_norm < 0.12) & (y_norm > 0.22) & (y_norm < 0.50))
-    keep &= ~((x_norm > 0.78) & (y_norm > 0.45))
-    x_px, y_px, yerr_px = x_px[keep], y_px[keep], yerr_px[keep]
-    x_norm, y_norm, yerr_norm = x_norm[keep], y_norm[keep], yerr_norm[keep]
-    return pd.DataFrame({"x_px": x_px, "y_px": y_px, "yerr_px": yerr_px,
-                         "x_norm": x_norm, "y_norm": y_norm, "yerr_norm": yerr_norm}
-                        ).sort_values("x_px", kind="mergesort").reset_index(drop=True)
+    bins = []
+    for i in range(len(edges) - 1):
+        c_lo, c_hi = edges[i], edges[i + 1]
+        seg = filled[c_lo:c_hi]
+        seg = seg[~np.isnan(seg)]
+        if len(seg) == 0:
+            continue
+        y_px_top = float(np.median(seg))
+        x_lo_phys = scfg.x_min + (c_lo / max(1.0, x1 - x0)) * (scfg.x_max - scfg.x_min)
+        x_hi_phys = scfg.x_min + (c_hi / max(1.0, x1 - x0)) * (scfg.x_max - scfg.x_min)
+        y_norm = 1.0 - y_px_top / max(1.0, y1 - y0)
+        y_phys = scfg.y_min + y_norm * (scfg.y_max - scfg.y_min)
+        bins.append({
+            "x_lo": float(x_lo_phys),
+            "x_hi": float(x_hi_phys),
+            "x_mid": float(0.5 * (x_lo_phys + x_hi_phys)),
+            "y": float(max(0.0, y_phys)),
+        })
+
+    return pd.DataFrame(bins)
 
 
-def _plot_overlay(rgb, box, pts, out, title):
+def _plot_overlay(rgb, box, pts, out, title, bkg_df=None):
     fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
     ax.imshow(rgb)
     x0, x1, y0, y1 = box
@@ -360,11 +344,23 @@ def _plot_overlay(rgb, box, pts, out, title):
         ax.scatter(pts["x_px"], pts["y_px"], s=12, c="lime", edgecolors="black", linewidths=0.25)
     else:
         ax.scatter(pts["x_px"], pts["y_px"], s=10, c="lime", edgecolors="black", linewidths=0.25)
+    if bkg_df is not None and len(bkg_df) > 0:
+        # Draw background bin tops in pixel space as cyan horizontal lines.
+        for _, row in bkg_df.iterrows():
+            # Convert physical x back to pixel for the overlay.
+            xlo_norm = (row["x_lo"] - bkg_df.attrs["scfg_x_min"]) / max(1e-9, bkg_df.attrs["scfg_x_max"] - bkg_df.attrs["scfg_x_min"])
+            xhi_norm = (row["x_hi"] - bkg_df.attrs["scfg_x_min"]) / max(1e-9, bkg_df.attrs["scfg_x_max"] - bkg_df.attrs["scfg_x_min"])
+            y_norm   = (row["y"]    - bkg_df.attrs["scfg_y_min"]) / max(1e-9, bkg_df.attrs["scfg_y_max"] - bkg_df.attrs["scfg_y_min"])
+            xlo_px = x0 + xlo_norm * (x1 - x0)
+            xhi_px = x0 + xhi_norm * (x1 - x0)
+            y_px   = y1 - y_norm   * (y1 - y0)
+            ax.plot([xlo_px, xhi_px], [y_px, y_px], color="cyan", lw=1.5)
     ax.set_title(title); ax.set_axis_off()
     fig.savefig(out, bbox_inches="tight"); plt.close(fig)
 
 
 def _plot_curve(pts, out, title, key):
+    """Plot digitized points + fit curve. Returns (xf, yf) dense fit arrays, or (None, None)."""
     fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=150)
     x = np.asarray(pts["x"], dtype=float) if "x" in pts.columns else np.asarray(pts["x_norm"], dtype=float)
     y = np.asarray(pts["y"], dtype=float) if "y" in pts.columns else np.asarray(pts["y_norm"], dtype=float)
@@ -373,73 +369,47 @@ def _plot_curve(pts, out, title, key):
         ax.errorbar(x, y, yerr=pts[yerr_col], ls="", marker="o", ms=2.6, lw=0.8, capsize=2, label="Digitized")
     else:
         ax.plot(x, y, marker="o", ms=2.3, lw=1.0, label="Digitized")
+    xf, yf = None, None
     if len(x) >= 4:
         xf = np.linspace(float(x.min()), float(x.max()), 300)
         if key == "lambdac_p":
-            # Parametric shape: falling exponential tail + one broad bump + offset.
-            def _model(xx, a, k, b, g, mu, sig):
-                return b + a * np.exp(-k * (xx - x.min())) + g * np.exp(-0.5 * ((xx - mu) / sig) ** 2)
+            def _lc_model(xx, a, k):
+                return a * np.exp(-k * (xx - x.min()))
             try:
                 y_pos = np.clip(y, 1e-8, None)
-                p0 = [
-                    max(float(np.quantile(y_pos, 0.95) - np.quantile(y_pos, 0.2)), 1e-3),
-                    8.0,
-                    max(float(np.quantile(y_pos, 0.1)), 1e-3),
-                    max(float(np.quantile(y_pos, 0.7) - np.quantile(y_pos, 0.3)), 1e-3),
-                    float(np.median(x)),
-                    0.12,
-                ]
-                lo = [0.0, 1e-4, 0.0, 0.0, float(x.min()), 0.02]
-                hi = [1e4, 80.0, 1e3, 1e3, float(x.max()), 0.60]
-                popt, _ = curve_fit(_model, x, y_pos, p0=p0, bounds=(lo, hi), maxfev=50000)
-                yf = np.clip(_model(xf, *popt), 0.0, None)
-                ax.plot(xf, yf, lw=1.2, label="Exp + Gaussian fit")
+                p0 = [float(y_pos.max()), 5.0]
+                lo = [0.0, 0.1]
+                hi = [1e4, 50.0]
+                popt, _ = curve_fit(_lc_model, x, y_pos, p0=p0, bounds=(lo, hi), maxfev=50000)
+                yf = np.clip(_lc_model(xf, *popt), 0.0, None)
+                ax.plot(xf, yf, lw=1.2, label="Exponential fit")
             except Exception:
                 coefs = np.polyfit(x, y, deg=min(5, len(x) - 1))
                 yf = np.clip(np.polyval(coefs, xf), 0.0, None)
                 ax.plot(xf, yf, lw=1.2, label=f"Poly fallback (deg {min(5, len(x)-1)})")
         elif key == "dsk":
-            # Two-bump shape: strong low-mass peak + high-mass shoulder + smooth tail.
-            def _dsk_model(xx, b, a, k, g1, mu1, s1, g2, mu2, s2):
-                tail = a * np.exp(-k * (xx - x.min()))
-                p1 = g1 * np.exp(-0.5 * ((xx - mu1) / s1) ** 2)
-                p2 = g2 * np.exp(-0.5 * ((xx - mu2) / s2) ** 2)
-                return b + tail + p1 + p2
+            def _rbw(xx, A, M, G):
+                return A * (xx * G * M) / ((xx**2 - M**2)**2 + M**2 * G**2)
             try:
-                y_pos = np.clip(y, 1e-8, None)
-                p0 = [
-                    max(float(np.quantile(y_pos, 0.05)), 1e-3),
-                    max(float(np.quantile(y_pos, 0.5) - np.quantile(y_pos, 0.05)), 1e-3),
-                    2.2,
-                    max(float(np.quantile(y_pos, 0.98) - np.quantile(y_pos, 0.7)), 1e-3),
-                    2.72,
-                    0.13,
-                    max(float(np.quantile(y_pos, 0.8) - np.quantile(y_pos, 0.3)), 1e-3),
-                    4.72,
-                    0.35,
-                ]
-                lo = [0.0, 0.0, 1e-4, 0.0, 2.55, 0.05, 0.0, 4.10, 0.10]
-                hi = [1e3, 1e4, 15.0, 1e4, 3.05, 0.35, 1e3, 5.20, 0.90]
-                popt, _ = curve_fit(
-                    _dsk_model,
-                    x,
-                    y_pos,
-                    p0=p0,
-                    bounds=(lo, hi),
-                    maxfev=50000,
-                )
-                yf = np.clip(_dsk_model(xf, *popt), 0.0, None)
-                ax.plot(xf, yf, lw=1.2, label="Tail + 2-Gaussian fit")
+                y_pos = np.clip(y, 0.0, None)
+                p0 = [float(y_pos.max()) * 0.1, 2.72, 0.10]
+                lo = [0.0, 2.55, 0.01]
+                hi = [1e6,  3.05, 0.60]
+                popt, _ = curve_fit(_rbw, x, y_pos, p0=p0, bounds=(lo, hi), maxfev=50000)
+                yf = np.clip(_rbw(xf, *popt), 0.0, None)
+                ax.plot(xf, yf, lw=1.2, label=f"Rel. Breit-Wigner (M={popt[1]:.3f}, Γ={popt[2]:.3f})")
             except Exception:
                 coefs = np.polyfit(x, y, deg=min(5, len(x) - 1))
                 yf = np.clip(np.polyval(coefs, xf), 0.0, None)
                 ax.plot(xf, yf, lw=1.2, label=f"Poly fallback (deg {min(5, len(x)-1)})")
         else:
             coefs = np.polyfit(x, y, deg=min(5, len(x) - 1))
-            ax.plot(xf, np.polyval(coefs, xf), lw=1.2, label=f"Smooth fit (deg {min(5, len(x)-1)})")
+            yf = np.clip(np.polyval(coefs, xf), 0.0, None)
+            ax.plot(xf, yf, lw=1.2, label=f"Smooth fit (deg {min(5, len(x)-1)})")
     ax.set_xlabel("x"); ax.set_ylabel("y")
     ax.set_title(title); ax.grid(alpha=0.25); ax.legend(frameon=False, fontsize=8)
     fig.savefig(out, bbox_inches="tight"); plt.close(fig)
+    return xf, yf
 
 
 def _estimate_trace_yerr_px(pts: pd.DataFrame, min_px: float = 1.0) -> np.ndarray:
@@ -501,6 +471,33 @@ def _run_spectrum(scfg, out_data, out_figs):
     overlay_path = out_figs / f"{stem}_overlay.png"
     curve_path   = out_figs / f"{stem}_curve.png"
 
+    bkg_df = None
+    if scfg.key == "dsk":
+        bkg_df = _extract_red_histogram(rgb, box, scfg)
+        bkg_df.attrs["scfg_x_min"] = scfg.x_min
+        bkg_df.attrs["scfg_x_max"] = scfg.x_max
+        bkg_df.attrs["scfg_y_min"] = scfg.y_min
+        bkg_df.attrs["scfg_y_max"] = scfg.y_max
+        print(f"[dsk] background: {len(bkg_df)} bins digitized")
+
+        # Interpolate background at each data point x and subtract.
+        bkg_x_mid = bkg_df["x_mid"].to_numpy()
+        bkg_y     = bkg_df["y"].to_numpy()
+        data_x    = pts["x"].to_numpy()
+        bkg_at_data = np.interp(data_x, bkg_x_mid, bkg_y,
+                                left=bkg_y[0], right=bkg_y[-1])
+        pts["y_raw"]    = pts["y"]
+        pts["y_bkg"]    = bkg_at_data
+        pts["y"]        = np.clip(pts["y"] - bkg_at_data, 0.0, None)
+
+        bkg_df.to_csv(out_data / f"{stem}_background.csv", index=False)
+        (out_data / f"{stem}_background.json").write_text(json.dumps({
+            "key": f"{stem}_background",
+            "n_bins": int(len(bkg_df)),
+            "bins": bkg_df.to_dict(orient="records"),
+        }, indent=2))
+        print(f"[dsk] background → {out_data / f'{stem}_background.csv'}")
+
     pts.to_csv(csv_path, index=False)
     json_path.write_text(json.dumps({
         "key":          scfg.key,
@@ -508,11 +505,16 @@ def _run_spectrum(scfg, out_data, out_figs):
         "axis_ranges":  {"x_min": scfg.x_min, "x_max": scfg.x_max, "y_min": scfg.y_min, "y_max": scfg.y_max},
         "plot_box_px":  {"x0": box[0], "x1": box[1], "y0": box[2], "y1": box[3]},
         "n_points":     int(len(pts)),
+        "background_subtracted": scfg.key == "dsk",
         "points":       pts.to_dict(orient="records"),
     }, indent=2))
 
-    _plot_overlay(rgb, box, pts, overlay_path, f"{stem}: extracted points overlay")
-    _plot_curve(pts, curve_path, f"{stem}: digitized curve", stem)
+    _plot_overlay(rgb, box, pts, overlay_path, f"{stem}: extracted points overlay", bkg_df=bkg_df)
+    xf, yf = _plot_curve(pts, curve_path, f"{stem}: digitized curve (bkg subtracted)" if scfg.key == "dsk" else f"{stem}: digitized curve", stem)
+    if xf is not None and yf is not None:
+        x_pts = pts["x"].to_numpy(float) if "x" in pts.columns else pts["x_norm"].to_numpy(float)
+        pts["y_fit"] = np.interp(x_pts, xf, yf, left=0.0, right=0.0)
+        pts.to_csv(csv_path, index=False)
     print(f"[{stem}] {len(pts)} points → {csv_path}, {overlay_path}, {curve_path}")
     return {"key": stem, "n_points": int(len(pts)),
             "csv": str(csv_path), "json": str(json_path)}

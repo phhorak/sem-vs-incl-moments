@@ -2,6 +2,9 @@
 """Step 5: Produce moment plots from cocktail + gap mode parquets.
 
 Outputs:
+  figures/5/mcambulance_impact.png
+  figures/5/ff_reweight_{mode}.png
+  figures/5/uncertainty_bands.png
   figures/5/distributions_3panel.png
   figures/5/distributions_gap_modes_3panel.png
   figures/5/sem_vs_data_central_3x3.png
@@ -15,11 +18,20 @@ Outputs:
 """
 import argparse
 import json
+import os
 import sys
 import tarfile
 import tempfile
 import time
 from pathlib import Path
+
+# Avoid thread-spawn failures on constrained batch/login nodes (mirrors
+# 8_hausdorff_data.py) when loading many cocktail/gap-mode parquets at once.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("ARROW_NUM_THREADS", "1")
 
 import matplotlib
 matplotlib.use("Agg")
@@ -28,7 +40,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
-import plothist
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", default="config.yaml")
@@ -42,7 +53,7 @@ sys.path.insert(0, str(_ROOT / "lib"))
 
 from lib.gap_modes import GAP_MODES
 from lib.moments import (
-    EXP_STYLE, YLABELS, YLABELS_RAW, ROW_TITLES,
+    EXP_STYLE, YLABELS, YLABELS_RAW, ROW_TITLES, GRID,
     build_exp_moments_df, compute_curves_np, df_to_plot_dict,
 )
 
@@ -57,6 +68,7 @@ toy_seed = p.get("toy_seed", 42)
 
 EL_CUTS = np.linspace(0.0, 2.5, 50)
 Q2_CUTS = np.linspace(0.0, 10.0, 45)
+CUTS_MAP = {"el_cuts": EL_CUTS, "q2_cuts": Q2_CUTS}
 
 # Local grid with actual arrays (GRID in lib/moments.py has string placeholders)
 _GRID = [
@@ -64,6 +76,8 @@ _GRID = [
     ("el", ["el_1", "el_2", "el_3"], EL_CUTS, r"$E_{\ell,\mathrm{cut}}\,[\mathrm{GeV}]$"),
     ("q2", ["q2_1", "q2_2", "q2_3"], Q2_CUTS, r"$q^2_{\mathrm{cut}}\,[\mathrm{GeV}^2]$"),
 ]
+
+COL_TITLES = [r"$n=1$", r"$n=2$", r"$n=3$"]
 
 CATEGORIES = ["D", "D*", "D**", "D(*) pi", "D(*) pi pi", "Ds(*) K"]
 CAT_LABELS = {
@@ -107,9 +121,29 @@ def _spectral(n):
     return [cmap(1.0 - i / max(n - 1, 1)) for i in range(n)]
 
 
+def _set_col_title(ax, r, c):
+    if r == 0:
+        ax.set_title(COL_TITLES[c])
+
+
+def _set_row_label(ax0, r, offset=-0.38):
+    ax0.text(offset, 0.5, ROW_TITLES[r], transform=ax0.transAxes,
+              rotation=90, va="center", ha="center")
+
+
+def _weighted_mean(x, w):
+    d = np.sum(w)
+    return float(np.sum(w * x) / d) if d > 0 else 0.0
+
+
+def _weighted_moment(x, w, n, mu=0.0):
+    d = np.sum(w)
+    return float(np.sum(w * (x - mu) ** n) / d) if d > 0 else 0.0
+
+
 # ── A. Load cocktail + gap mode parquets ──────────────────────────────────────
 
-print("[1/7] Loading parquets …")
+print("[1/10] Loading parquets …")
 cocktail = pd.read_parquet(Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet")
 if "total_weight" not in cocktail.columns:
     cocktail["total_weight"] = cocktail["weight"] * cocktail["mc_weight"] * cocktail["ff_weight"]
@@ -125,9 +159,11 @@ for meta in GAP_MODES:
     else:
         print(f"  warning: {pq} not found — skipping {meta['mode']}")
 
+active_gap = [m for m in GAP_MODES if m["mode"] in gap_frames]
+
 # ── B. Load experimental data ─────────────────────────────────────────────────
 
-print("[2/7] Loading experimental data …")
+print("[2/10] Loading experimental data …")
 exp_central: dict = {}
 exp_raw: dict = {}
 avg_central: dict = {}
@@ -159,7 +195,7 @@ else:
 
 # ── C. Compute nominal SEM moment curves (central + raw) ──────────────────────
 
-print("[3/7] Computing nominal moment curves …")
+print("[3/10] Computing nominal moment curves …")
 _ok = (
     np.isfinite(cocktail["Mx"].to_numpy())
     & np.isfinite(cocktail["El_B"].to_numpy())
@@ -221,7 +257,7 @@ sem_raw_nom = {k: np.asarray(v, dtype=float) for k, v in sem_raw_nom.items()}
 
 # ── D. Toy MC for uncertainty bands (central moments) ─────────────────────────
 
-print(f"[4/7] Running {n_toys} toys …")
+print(f"[4/10] Running {n_toys} toys …")
 t0 = time.monotonic()
 rng = np.random.default_rng(toy_seed)
 
@@ -273,9 +309,196 @@ for i_toy in range(n_toys):
 sem_std = {k: np.nanstd(np.stack(toy_store[k]), axis=0, ddof=1) for k in MKEYS}
 print(f"  done ({time.monotonic()-t0:.1f}s)")
 
-# ── E. Distributions per category (3-panel) ───────────────────────────────────
+# ── E. MCAmbulance impact plot ────────────────────────────────────────────────
 
-print("[5/7] Category distribution plots …")
+print("[5/10] MCAmbulance impact plot …")
+_has_mc_weight = "mc_weight" in cocktail.columns
+if _has_mc_weight:
+    _ff_ok = (cocktail["ff_weight"].to_numpy(float) <= 10) if "ff_weight" in cocktail.columns else np.ones(len(cocktail), bool)
+    _mca_mask = _ok & _ff_ok
+    _tw_nomc = (cocktail.loc[_mca_mask, "weight"].to_numpy(float)
+                * cocktail.loc[_mca_mask, "ff_weight"].to_numpy(float))
+    _nom_with = compute_curves_np(
+        np.square(cocktail.loc[_mca_mask, "Mx"].to_numpy(float)),
+        cocktail.loc[_mca_mask, "El_B"].to_numpy(float),
+        cocktail.loc[_mca_mask, "q2"].to_numpy(float),
+        cocktail.loc[_mca_mask, "total_weight"].to_numpy(float),
+        EL_CUTS, Q2_CUTS)
+    _nom_without = compute_curves_np(
+        np.square(cocktail.loc[_mca_mask, "Mx"].to_numpy(float)),
+        cocktail.loc[_mca_mask, "El_B"].to_numpy(float),
+        cocktail.loc[_mca_mask, "q2"].to_numpy(float),
+        _tw_nomc, EL_CUTS, Q2_CUTS)
+    fig, axes = plt.subplots(3, 3, figsize=(14, 10), dpi=150)
+
+    for r, (_, keys, ck, xlabel) in enumerate(GRID):
+        cuts = CUTS_MAP[ck]
+        for c, key in enumerate(keys):
+            ax = axes[r, c]
+            ax.plot(cuts, _nom_with[key],    lw=1.8, color="steelblue",
+                    label="With MCAmbulance" if (r == c == 0) else None)
+            ax.plot(cuts, _nom_without[key], lw=1.8, color="darkorange", ls="--",
+                    label="Without MCAmbulance" if (r == c == 0) else None)
+            ax.set_ylabel(YLABELS[key]); ax.set_xlabel(xlabel)
+            ax.set_xlim(float(cuts[0]), float(cuts[-1])); ax.grid(alpha=0.2)
+            _set_col_title(ax, r, c)
+        _set_row_label(axes[r, 0], r)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.995))
+    fig.tight_layout(rect=[0.04, 0.02, 0.99, 0.95])
+    fig.savefig(fig5 / "mcambulance_impact.png", bbox_inches="tight"); plt.close(fig)
+    print("  Wrote mcambulance_impact.png")
+else:
+    print("  note: mc_weight column not found — skipping mcambulance_impact.png")
+
+# ── F. FF before/after plots (per Hammer-reweighted mode) ─────────────────────
+
+print("[6/10] FF reweight plots …")
+n_boot = p.get("n_bootstrap", 200)
+_ff_var_ids = _var_ids  # same ff variation ids computed for the toy MC above
+_hammer_decays = sorted(cocktail.loc[cocktail["ff_weight"].notna()
+                                     & (cocktail["ff_weight"] != 1.0), "decay_name"].unique()) \
+    if "ff_weight" in cocktail.columns else []
+q2_bins = np.linspace(0, 12, 50)
+
+def _mode_ff_band(sub_df, bins, n_t, mode_seed):
+    q2v = sub_df["q2"].to_numpy(float)
+    base_w = (sub_df["weight"] * sub_df["mc_weight"]).to_numpy(float)
+    ff_c = sub_df["ff_weight"].to_numpy(float)
+    ok = np.isfinite(q2v) & np.isfinite(base_w) & np.isfinite(ff_c) & (ff_c > 0)
+    if not ok.any() or not _ff_var_ids:
+        return None
+    q2v, base_w, ff_c = q2v[ok], base_w[ok], ff_c[ok]
+    ff_ud = [(sub_df[f"ff_weight_up{i}"].to_numpy(float)[ok] - ff_c,
+              ff_c - sub_df[f"ff_weight_down{i}"].to_numpy(float)[ok])
+             for i in _ff_var_ids]
+    dc = np.zeros(len(q2v), dtype=np.int32)
+    rng_m = np.random.default_rng(mode_seed)
+    toy_d = []
+    for _ in range(n_t):
+        z = rng_m.standard_normal((1, len(ff_ud)))
+        ff_s = ff_c.copy()
+        for j, (u, d) in enumerate(ff_ud):
+            ff_s += np.where(z[dc, j] >= 0, z[dc, j] * u, z[dc, j] * d)
+        w_t = np.where(np.isfinite(base_w * ff_s), base_w * ff_s, 0.0)
+        h, _ = np.histogram(q2v, bins=bins, weights=w_t, density=True)
+        toy_d.append(h)
+    return np.nanstd(np.asarray(toy_d), axis=0, ddof=1)
+
+for _mode_name in _hammer_decays:
+    _mask = (cocktail["decay_name"] == _mode_name).to_numpy()
+    if "ff_weight" in cocktail.columns:
+        _mask &= (cocktail["ff_weight"].to_numpy(float) <= 10)
+    if not _mask.any():
+        continue
+    _sub = cocktail.loc[_mask]
+    _w_no = _sub["weight"].to_numpy(float) * _sub["mc_weight"].to_numpy(float)
+    _w_ff = _sub["total_weight"].to_numpy(float)
+    _q2v  = _sub["q2"].to_numpy(float)
+    _val  = np.isfinite(_q2v) & np.isfinite(_w_no) & np.isfinite(_w_ff)
+    if not _val.any():
+        continue
+    fig, ax = plt.subplots(figsize=(7, 4.5), dpi=150)
+    ax.hist(_q2v[_val], bins=q2_bins, weights=_w_no[_val], density=True,
+            histtype="step", color="steelblue", lw=1.5, label="Before FF reweight")
+    ax.hist(_q2v[_val], bins=q2_bins, weights=_w_ff[_val], density=True,
+            histtype="step", color="darkorange", lw=1.5, ls="--", label="After FF reweight")
+    _ff_std = _mode_ff_band(_sub.loc[_val], q2_bins, n_boot,
+                            toy_seed + (abs(hash(_mode_name)) % 10_000))
+    if _ff_std is not None and np.any(np.isfinite(_ff_std)):
+        _h_nom, _ = np.histogram(_q2v[_val], bins=q2_bins, weights=_w_ff[_val], density=True)
+        if np.any(np.isfinite(_h_nom)):
+            _ctr = 0.5 * (q2_bins[:-1] + q2_bins[1:])
+            ax.fill_between(_ctr, np.clip(_h_nom - _ff_std, 0, None), _h_nom + _ff_std,
+                            color="forestgreen", alpha=0.25, step="mid", label="FF toy unc.")
+    ax.set_xlabel(r"$q^2\,[\mathrm{GeV}^2]$"); ax.set_ylabel("Density")
+    ax.set_title(_mode_name.replace("_", r"\_")); ax.legend(frameon=False); ax.grid(alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(fig5 / f"ff_reweight_{_mode_name}.png", bbox_inches="tight"); plt.close(fig)
+print(f"  Wrote FF plots for {len(_hammer_decays)} modes")
+
+# ── G. Uncertainty bands (stat / BF / FF per source) ─────────────────────────
+
+print(f"[7/10] Uncertainty bands ({n_boot} toys per source) …")
+
+_df_unc = cocktail[cocktail["ff_weight"] <= 10].copy() if "ff_weight" in cocktail.columns else cocktail.copy()
+_rng_unc = np.random.default_rng(toy_seed + 99999)
+_KEY_ORDER = MKEYS
+
+_ok_unc = (np.isfinite(_df_unc["Mx"]) & np.isfinite(_df_unc["El_B"])
+           & np.isfinite(_df_unc["q2"]) & np.isfinite(_df_unc["total_weight"])
+           & (_df_unc["total_weight"] > 0)).to_numpy()
+_dc_unc, _ = pd.factorize(_df_unc["decay_name"], sort=True)
+_n_dec_unc  = int(_dc_unc.max() + 1) if len(_dc_unc) else 0
+_dc_unc     = _dc_unc.astype(np.int32)
+_bw_unc     = (_df_unc["weight"] * _df_unc["mc_weight"]).to_numpy(float)
+_bf_v_unc   = _df_unc["bf"].to_numpy(float)
+_bf_u_unc   = _df_unc["bf_unc"].to_numpy(float)
+_rel_bf_unc = np.divide(_bf_u_unc, _bf_v_unc, out=np.zeros_like(_bf_u_unc), where=_bf_v_unc > 0)
+_fc_unc     = _df_unc["ff_weight"].to_numpy(float)
+_fud_unc    = [(_df_unc[f"ff_weight_up{i}"].to_numpy(float) - _fc_unc,
+                _fc_unc - _df_unc[f"ff_weight_down{i}"].to_numpy(float)) for i in _ff_var_ids]
+_N_ok_unc   = int(_ok_unc.sum())
+_mx2_unc = np.square(_df_unc.loc[_ok_unc, "Mx"].to_numpy(float))
+_el_unc  = _df_unc.loc[_ok_unc, "El_B"].to_numpy(float)
+_q2_unc  = _df_unc.loc[_ok_unc, "q2"].to_numpy(float)
+_bwok    = _bw_unc[_ok_unc]; _dcok = _dc_unc[_ok_unc]
+_rbok    = _rel_bf_unc[_ok_unc]; _fcok = _fc_unc[_ok_unc]
+_fudok   = [(u[_ok_unc], d[_ok_unc]) for u, d in _fud_unc]
+
+def _run_src_toys(source):
+    store = {k: [] for k in _KEY_ORDER}
+    for _ in range(n_boot):
+        _c = (np.bincount(_rng_unc.integers(0, _N_ok_unc, _N_ok_unc), minlength=_N_ok_unc).astype(float)
+              if source == "stat" else np.ones(_N_ok_unc))
+        _br = (1.0 + _rng_unc.standard_normal(_n_dec_unc)[_dcok] * _rbok) if source == "bf" else 1.0
+        _ff = _fcok.copy()
+        if source == "ff" and _fudok:
+            _z = _rng_unc.standard_normal((_n_dec_unc, len(_fudok)))
+            for j, (u, d) in enumerate(_fudok):
+                _zj = _z[_dcok, j]
+                _ff += np.where(_zj >= 0, _zj * u, _zj * d)
+        _w = np.where(np.isfinite(_bwok * _br * _ff * _c), _bwok * _br * _ff * _c, 0.0)
+        for k, v in compute_curves_np(_mx2_unc, _el_unc, _q2_unc, _w, EL_CUTS, Q2_CUTS).items():
+            store[k].append(v)
+    return {k: np.nanstd(np.stack(store[k]), axis=0, ddof=1) for k in _KEY_ORDER}
+
+_nom_unc = compute_curves_np(_mx2_unc, _el_unc, _q2_unc,
+                             _df_unc.loc[_ok_unc, "total_weight"].to_numpy(float),
+                             EL_CUTS, Q2_CUTS)
+_std_stat = _run_src_toys("stat")
+_std_bf   = _run_src_toys("bf")
+_std_ff   = _run_src_toys("ff")
+
+_band_cfg = [("stat", _std_stat, "steelblue", 0.45),
+             ("BF",   _std_bf,   "darkorange", 0.45),
+             ("FF",   _std_ff,   "forestgreen", 0.45)]
+fig, axes = plt.subplots(3, 3, figsize=(14, 10), dpi=150)
+for r, (_, keys, ck, xlabel) in enumerate(GRID):
+    cuts = CUTS_MAP[ck]
+    for c, key in enumerate(keys):
+        ax = axes[r, c]
+        ax.plot(cuts, _nom_unc[key], color="black", lw=1.5, zorder=5)
+        for lbl, std, color, alpha in _band_cfg:
+            if not np.any(np.isfinite(std[key])): continue
+            ax.fill_between(cuts, _nom_unc[key] - std[key], _nom_unc[key] + std[key],
+                            alpha=alpha, lw=0, color=color,
+                            label=lbl if (r == c == 0) else None)
+        ax.set_ylabel(YLABELS[key]); ax.set_xlabel(xlabel)
+        ax.set_xlim(float(cuts[0]), float(cuts[-1])); ax.grid(alpha=0.2)
+        _set_col_title(ax, r, c)
+    _set_row_label(axes[r, 0], r)
+_h_nom = mlines.Line2D([0], [0], color="black", lw=1.5, label="Nominal")
+_h, _l = axes[0, 0].get_legend_handles_labels()
+fig.legend([_h_nom] + _h, ["Nominal"] + _l, loc="upper center", ncol=4,
+           frameon=False, bbox_to_anchor=(0.5, 0.995))
+fig.tight_layout(rect=[0.04, 0.02, 0.99, 0.95])
+fig.savefig(fig5 / "uncertainty_bands.png", bbox_inches="tight"); plt.close(fig)
+print("  Wrote uncertainty_bands.png")
+
+# ── H. Distributions per category (3-panel) ───────────────────────────────────
+
+print("[8/10] Category distribution plots …")
 df_plot = cocktail.loc[_ok].copy()
 VARS = [
     ("Mx",   r"$M_X\ [\mathrm{GeV}]$",     np.linspace(1.6, 5.5, 120)),
@@ -303,12 +526,11 @@ fig.savefig(fig5 / "distributions_3panel.png"); plt.close(fig)
 print("  Wrote distributions_3panel.png")
 
 # Gap-mode-only distributions (same 3-panel format)
-active_gap_for_dist = [m for m in GAP_MODES if m["mode"] in gap_frames]
-if active_gap_for_dist:
+if active_gap:
     fig_g, axes_g = plt.subplots(1, 3, figsize=(15, 5), dpi=150)
     for ax, (col, xlabel, bins) in zip(axes_g, VARS):
         db = bins[1] - bins[0]
-        for meta in active_gap_for_dist:
+        for meta in active_gap:
             gdf = gap_frames[meta["mode"]]
             m = np.isfinite(gdf[col].to_numpy(dtype=float))
             if not np.any(m):
@@ -331,7 +553,7 @@ else:
     print("  note: no active gap-mode parquets found for distributions_gap_modes_3panel.png")
 
 
-# ── F. SEM vs data plots (central + raw) ──────────────────────────────────────
+# ── I. SEM vs data plots (central + raw) ──────────────────────────────────────
 
 def _sem_vs_data_plot(sem_nom, sem_std, exp_data, avg_data, outpath, moment_space):
     ylabels = YLABELS_RAW if moment_space == "raw" else YLABELS
@@ -351,10 +573,8 @@ def _sem_vs_data_plot(sem_nom, sem_std, exp_data, avg_data, outpath, moment_spac
             x0, x1 = float(cuts[0]), float(cuts[-1])
             ax.set_xlim(x0 - 0.02*(x1-x0), x1 + 0.02*(x1-x0))
             ax.grid(alpha=0.25)
-            if r == 0:
-                ax.set_title([r"$n=1$", r"$n=2$", r"$n=3$"][c])
-        axes[r, 0].text(-0.35, 0.5, ROW_TITLES[r], transform=axes[r, 0].transAxes,
-                        rotation=90, va="center", ha="center")
+            _set_col_title(ax, r, c)
+        _set_row_label(axes[r, 0], r, offset=-0.35)
     handles, labels = [], []; seen2: set[str] = set()
     for ax in fig.axes:
         for h, l in zip(*ax.get_legend_handles_labels()):
@@ -373,9 +593,9 @@ _sem_vs_data_plot(sem_raw_nom, sem_std, exp_raw, avg_raw,
                   fig5 / "sem_vs_data_raw_3x3.png", "raw")
 
 
-# ── G. Stacked category contributions ─────────────────────────────────────────
+# ── J. Stacked category contributions ─────────────────────────────────────────
 
-print("[6/7] Stacked + gap mode plots …")
+print("[9/10] Stacked + gap mode plots …")
 
 
 def _stacked_plot(df, outpath, moment_space):
@@ -387,8 +607,7 @@ def _stacked_plot(df, outpath, moment_space):
     ok      = np.isfinite(mx2_all) & np.isfinite(el_all) & np.isfinite(q2_all) & (w_all > 0)
     raw     = moment_space == "raw"
 
-    def gm(x, w): d = np.sum(w); return float(np.sum(w * x) / d) if d > 0 else 0.0
-    def wm(x, w, n, mu=0.): d = np.sum(w); return float(np.sum(w*(x-mu)**n)/d) if d > 0 else 0.
+    gm, wm = _weighted_mean, _weighted_moment
 
     contribs: dict[str, dict[str, list]] = {k: {c: [] for c in CATEGORIES} for k in MKEYS}
 
@@ -433,10 +652,8 @@ def _stacked_plot(df, outpath, moment_space):
                 ax.axhline(0, color="black", lw=0.5, ls=":", alpha=0.4)
             ax.set_ylabel(ylabels[key]); ax.set_xlabel(xlabel)
             ax.set_xlim(float(cuts[0]), float(cuts[-1])); ax.grid(alpha=0.2)
-            if r == 0:
-                ax.set_title([r"$n=1$", r"$n=2$", r"$n=3$"][ci])
-        axes[r, 0].text(-0.38, 0.5, ROW_TITLES[r], transform=axes[r, 0].transAxes,
-                        rotation=90, va="center", ha="center")
+            _set_col_title(ax, r, ci)
+        _set_row_label(axes[r, 0], r)
 
     cat_handles, cat_labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(cat_handles, cat_labels, loc="upper center", ncol=min(len(cat_handles), 8),
@@ -450,13 +667,12 @@ _stacked_plot(cocktail.loc[_ok], fig5 / "stacked_central_3x3.png", "central")
 _stacked_plot(cocktail.loc[_ok], fig5 / "stacked_raw_3x3.png", "raw")
 
 
-# ── H. Gap mode overlay + SM+gap+data plots ───────────────────────────────────
+# ── K. Gap mode overlay + SM+gap+data plots ───────────────────────────────────
 
 REQUIRED_COLS = ["Mx", "El_B", "q2", "total_weight", "category"]
 sm_df = cocktail[REQUIRED_COLS].copy()
 sm_df.loc[sm_df["category"] == "Ds(*) K", "total_weight"] = 0.0
 
-active_gap     = [m for m in GAP_MODES if m["mode"] in gap_frames]
 gap_categories = [m["category"] for m in active_gap]
 
 all_frames = [sm_df]
@@ -477,8 +693,7 @@ ok_c   = np.isfinite(mx2_c) & np.isfinite(el_c) & np.isfinite(q2_c) & (w_c > 0)
 
 def _compute_gap_all(moment_space):
     raw = moment_space == "raw"
-    def gm(x, w): d = np.sum(w); return float(np.sum(w*x)/d) if d > 0 else 0.
-    def wm(x, w, n, mu=0.): d = np.sum(w); return float(np.sum(w*(x-mu)**n)/d) if d > 0 else 0.
+    gm, wm = _weighted_mean, _weighted_moment
 
     sm_total: dict[str, list] = {k: [] for k in MKEYS}
     gap_out:  dict[str, dict[str, list]] = {k: {c: [] for c in gap_categories} for k in MKEYS}
@@ -553,9 +768,8 @@ for r, (_, keys, cuts, xlabel) in enumerate(_GRID):
         ax.axhline(0, color="black", lw=0.5, ls=":", alpha=0.4)
         ax.set_ylabel(YLABELS_OV[key]); ax.set_xlabel(xlabel)
         ax.set_xlim(float(cuts[0]), float(cuts[-1])); ax.grid(alpha=0.2)
-        if r == 0: ax.set_title([r"$n=1$", r"$n=2$", r"$n=3$"][ci])
-    axes_ov[r, 0].text(-0.38, 0.5, ROW_TITLES[r], transform=axes_ov[r, 0].transAxes,
-                       rotation=90, va="center", ha="center")
+        _set_col_title(ax, r, ci)
+    _set_row_label(axes_ov[r, 0], r)
 ov_h = [mlines.Line2D([], [], color=m["color"], ls=m["ls"], lw=m["lw"], label=m["label"])
         for m in active_gap]
 fig_ov.legend(ov_h, [m["label"] for m in active_gap],
@@ -589,9 +803,8 @@ for space in ("central", "raw"):
             ax.axhline(0, color="black", lw=0.4, ls=":", alpha=0.4)
             ax.set_ylabel(ylabels[key]); ax.set_xlabel(xlabel)
             ax.set_xlim(float(cuts[0]), float(cuts[-1])); ax.grid(alpha=0.2)
-            if r == 0: ax.set_title([r"$n=1$", r"$n=2$", r"$n=3$"][ci])
-        axes_sm[r, 0].text(-0.38, 0.5, ROW_TITLES[r], transform=axes_sm[r, 0].transAxes,
-                           rotation=90, va="center", ha="center")
+            _set_col_title(ax, r, ci)
+        _set_row_label(axes_sm[r, 0], r)
     sm_h   = mlines.Line2D([], [], color="0.45", lw=2.2, label="SM cocktail")
     gap_h2 = [mlines.Line2D([], [], color=m["color"], ls=m["ls"], lw=m["lw"],
                              label=m["label"]) for m in active_gap]
@@ -610,9 +823,9 @@ for space in ("central", "raw"):
     print(f"  Wrote {fname}")
 
 
-# ── I. Write sem_moments_raw.json ─────────────────────────────────────────────
+# ── L. Write sem_moments_raw.json ─────────────────────────────────────────────
 
-print("[7/7] Writing output/5/sem_moments_raw.json …")
+print("[10/10] Writing output/5/sem_moments_raw.json …")
 payload = {
     "cuts": {"el": EL_CUTS.tolist(), "q2": Q2_CUTS.tolist()},
     "sem_nominal_central": {k: v.tolist() for k, v in sem_cen_nom.items()},

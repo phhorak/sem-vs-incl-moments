@@ -178,29 +178,45 @@ def df_to_plot_dict(df: pd.DataFrame, moment_type: str) -> dict:
 
 
 # ── Fast numpy moment computation (presorted suffix-sum) ─────────────────────
+#
+# compute_curves_np() re-sorts by el/q2 and recomputes mx2/el/q2 power arrays on every call,
+# even though only the weight vector changes across repeated calls with the same events (e.g.
+# toy loops). build_curve_context()/compute_curves_from_context() split the fixed (sort order +
+# power arrays, O(N log N)) and weight-dependent (cumsum, O(N)) parts so a toy loop pays the
+# sort cost once instead of once per toy -- ~4-8x faster per call at O(1e7)-row scale.
 
-def compute_curves_np(
-    mx2: np.ndarray, el: np.ndarray, q2: np.ndarray, w: np.ndarray,
-    el_cuts: np.ndarray, q2_cuts: np.ndarray,
-) -> dict[str, np.ndarray]:
+def build_curve_context(mx2: np.ndarray, el: np.ndarray, q2: np.ndarray) -> dict:
     el_order = np.argsort(el)
-    el_s  = el[el_order];  mx2_s = mx2[el_order]; w_el = w[el_order]
-    cw    = np.concatenate(([0.], np.cumsum(w_el)))
-    cmx2  = np.concatenate(([0.], np.cumsum(w_el * mx2_s)))
-    cmx4  = np.concatenate(([0.], np.cumsum(w_el * mx2_s ** 2)))
-    cmx6  = np.concatenate(([0.], np.cumsum(w_el * mx2_s ** 3)))
-    cel   = np.concatenate(([0.], np.cumsum(w_el * el_s)))
-    cel2  = np.concatenate(([0.], np.cumsum(w_el * el_s ** 2)))
-    cel3  = np.concatenate(([0.], np.cumsum(w_el * el_s ** 3)))
-    N_el  = len(el_s)
-
+    el_s  = el[el_order];  mx2_s = mx2[el_order]
     q2_order = np.argsort(q2)
-    q2_s  = q2[q2_order]; w_q2 = w[q2_order]
-    cw2   = np.concatenate(([0.], np.cumsum(w_q2)))
-    cq2   = np.concatenate(([0.], np.cumsum(w_q2 * q2_s)))
-    cq4   = np.concatenate(([0.], np.cumsum(w_q2 * q2_s ** 2)))
-    cq6   = np.concatenate(([0.], np.cumsum(w_q2 * q2_s ** 3)))
-    N_q2  = len(q2_s)
+    q2_s  = q2[q2_order]
+    return {
+        "el_order": el_order, "el_s": el_s, "N_el": len(el_s),
+        "mx2_s": mx2_s, "mx2_s2": mx2_s ** 2, "mx2_s3": mx2_s ** 3,
+        "el_s2": el_s ** 2, "el_s3": el_s ** 3,
+        "q2_order": q2_order, "q2_s": q2_s, "N_q2": len(q2_s),
+        "q2_s2": q2_s ** 2, "q2_s3": q2_s ** 3,
+    }
+
+
+def compute_curves_from_context(ctx: dict, w: np.ndarray, el_cuts: np.ndarray,
+                                 q2_cuts: np.ndarray) -> dict[str, np.ndarray]:
+    el_order, el_s, N_el = ctx["el_order"], ctx["el_s"], ctx["N_el"]
+    w_el = w[el_order]
+    cw   = np.concatenate(([0.], np.cumsum(w_el)))
+    cmx2 = np.concatenate(([0.], np.cumsum(w_el * ctx["mx2_s"])))
+    cmx4 = np.concatenate(([0.], np.cumsum(w_el * ctx["mx2_s2"])))
+    cmx6 = np.concatenate(([0.], np.cumsum(w_el * ctx["mx2_s3"])))
+    cel  = np.concatenate(([0.], np.cumsum(w_el * el_s)))
+    cel2 = np.concatenate(([0.], np.cumsum(w_el * ctx["el_s2"])))
+    cel3 = np.concatenate(([0.], np.cumsum(w_el * ctx["el_s3"])))
+
+    q2_order, q2_s, N_q2 = ctx["q2_order"], ctx["q2_s"], ctx["N_q2"]
+    w_q2 = w[q2_order]
+    cw2  = np.concatenate(([0.], np.cumsum(w_q2)))
+    cq2  = np.concatenate(([0.], np.cumsum(w_q2 * q2_s)))
+    cq4  = np.concatenate(([0.], np.cumsum(w_q2 * ctx["q2_s2"])))
+    cq6  = np.concatenate(([0.], np.cumsum(w_q2 * ctx["q2_s3"])))
 
     out: dict[str, list] = {k: [] for k in
         ["mx_1", "mx_2", "mx_3", "el_1", "el_2", "el_3", "q2_1", "q2_2", "q2_3"]}
@@ -239,17 +255,68 @@ def compute_curves_np(
     return {k: np.asarray(v, dtype=float) for k, v in out.items()}
 
 
-def curves_from_df(df: pd.DataFrame, el_cuts: np.ndarray, q2_cuts: np.ndarray,
-                   weight_col: str = "total_weight") -> dict[str, np.ndarray]:
-    ok = (
-        np.isfinite(df["Mx"].to_numpy()) & np.isfinite(df["El_B"].to_numpy())
-        & np.isfinite(df["q2"].to_numpy()) & np.isfinite(df[weight_col].to_numpy())
-        & (df[weight_col].to_numpy() > 0)
-    )
-    return compute_curves_np(
-        np.square(df.loc[ok, "Mx"].to_numpy(dtype=float)),
-        df.loc[ok, "El_B"].to_numpy(dtype=float),
-        df.loc[ok, "q2"].to_numpy(dtype=float),
-        df.loc[ok, weight_col].to_numpy(dtype=float),
-        el_cuts, q2_cuts,
-    )
+def compute_curves_np(
+    mx2: np.ndarray, el: np.ndarray, q2: np.ndarray, w: np.ndarray,
+    el_cuts: np.ndarray, q2_cuts: np.ndarray,
+) -> dict[str, np.ndarray]:
+    ctx = build_curve_context(mx2, el, q2)
+    return compute_curves_from_context(ctx, w, el_cuts, q2_cuts)
+
+
+def compute_raw_curves_np(
+    mx2: np.ndarray, el: np.ndarray, q2: np.ndarray, w: np.ndarray,
+    el_cuts: np.ndarray, q2_cuts: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Like compute_curves_np, but returns RAW moments E[X^n] (n=1,2,3) above each cut instead
+    of central moments -- what the Hausdorff/MaxEnt data pipeline (8_hausdorff_data.py) and its
+    toy loop need directly (raw_to_mu01 consumes raw moments, not central ones)."""
+    ctx = build_curve_context(mx2, el, q2)
+    el_order, el_s, N_el = ctx["el_order"], ctx["el_s"], ctx["N_el"]
+    w_el = w[el_order]
+    cw    = np.concatenate(([0.], np.cumsum(w_el)))
+    cmx2  = np.concatenate(([0.], np.cumsum(w_el * ctx["mx2_s"])))
+    cmx4  = np.concatenate(([0.], np.cumsum(w_el * ctx["mx2_s2"])))
+    cmx6  = np.concatenate(([0.], np.cumsum(w_el * ctx["mx2_s3"])))
+    cel   = np.concatenate(([0.], np.cumsum(w_el * el_s)))
+    cel2  = np.concatenate(([0.], np.cumsum(w_el * ctx["el_s2"])))
+    cel3  = np.concatenate(([0.], np.cumsum(w_el * ctx["el_s3"])))
+
+    q2_order, q2_s, N_q2 = ctx["q2_order"], ctx["q2_s"], ctx["N_q2"]
+    w_q2 = w[q2_order]
+    cw2   = np.concatenate(([0.], np.cumsum(w_q2)))
+    cq2   = np.concatenate(([0.], np.cumsum(w_q2 * q2_s)))
+    cq4   = np.concatenate(([0.], np.cumsum(w_q2 * ctx["q2_s2"])))
+    cq6   = np.concatenate(([0.], np.cumsum(w_q2 * ctx["q2_s3"])))
+
+    out: dict[str, list] = {k: [] for k in
+        ["mx_1", "mx_2", "mx_3", "el_1", "el_2", "el_3", "q2_1", "q2_2", "q2_3"]}
+
+    def sf(c: np.ndarray, k: int, N: int) -> float:
+        return float(c[N] - c[k])
+
+    for cut in el_cuts:
+        k  = int(np.searchsorted(el_s, cut, side="right"))
+        sw = sf(cw, k, N_el)
+        if sw <= 0:
+            for key in ["mx_1", "mx_2", "mx_3", "el_1", "el_2", "el_3"]:
+                out[key].append(float("nan"))
+            continue
+        out["mx_1"].append(sf(cmx2, k, N_el) / sw)
+        out["mx_2"].append(sf(cmx4, k, N_el) / sw)
+        out["mx_3"].append(sf(cmx6, k, N_el) / sw)
+        out["el_1"].append(sf(cel,  k, N_el) / sw)
+        out["el_2"].append(sf(cel2, k, N_el) / sw)
+        out["el_3"].append(sf(cel3, k, N_el) / sw)
+
+    for cut in q2_cuts:
+        k  = int(np.searchsorted(q2_s, cut, side="right"))
+        sw = sf(cw2, k, N_q2)
+        if sw <= 0:
+            for key in ["q2_1", "q2_2", "q2_3"]:
+                out[key].append(float("nan"))
+            continue
+        out["q2_1"].append(sf(cq2, k, N_q2) / sw)
+        out["q2_2"].append(sf(cq4, k, N_q2) / sw)
+        out["q2_3"].append(sf(cq6, k, N_q2) / sw)
+
+    return {k: np.asarray(v, dtype=float) for k, v in out.items()}
