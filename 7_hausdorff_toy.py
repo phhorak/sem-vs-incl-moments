@@ -22,6 +22,10 @@ Named systematics (each individually toggleable via config `systematics:`, run s
     identically to both the pseudo-inclusive and pseudo-SEM cocktail copies)
   - bf_gap: inclusive-BR uncertainty propagated into the assumed gap-mode BR budget
 
+Alternative gap truth (config `hausdorff_toy.alt_gap`, optional): the same Asimov convergence figures (constrained vs unconstrained,
+N = n_moments) for a MIXED gap -- e.g. 50% D l nu + 50% Lambda_c p l nu, each with a 50/50 B0/B+ isospin mix -- with the truth drawn as stacked
+smooth curves per component; per-variable 2x2 figures and a combined M_X | E_l | q2 figure go to figures/7/alt_gap_<tag>/ (plot_alt_gap).
+
 Usage:
   cd clean && python3 7_hausdorff_toy.py --config config.yaml
 """
@@ -48,11 +52,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import yaml
 from scipy.optimize import minimize
+from scipy.ndimage import gaussian_filter1d
 from tqdm import tqdm
 import plothist
 
@@ -222,6 +229,90 @@ def residual_mu01(x_i, w_i, x_e, w_e, lo, span, max_mom):
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
+def plot_alt_gap(alt, sem, out3, t_grid, tp_grid, n_moments, alpha, beta, fig_dir):
+    """Asimov MaxEnt convergence (constrained vs unconstrained, N = n_moments) for a MIXED gap truth, config hausdorff_toy.alt_gap: components with a
+    gap fraction and either SEM-cocktail decay names or a gap-mode sample; every B species (B0/B+) of a component carries an equal share (isospin mix).
+    The truth is drawn as stacked Gaussian-smoothed curves (a component with a single-hadron, delta-function M_X is drawn as a stem). Writes per-variable
+    2x2 figures and one combined M_X | E_l | q2 figure to figures/7/alt_gap_<tag>/. `sem`: numpy arrays of the SEM cocktail events (Mx in GeV)."""
+    out = fig_dir / f"alt_gap_{alt['tag']}"; out.mkdir(parents=True, exist_ok=True)
+    cols = ["Mx", "El_B", "q2", "total_weight", "decay_name"]; pal = ["#1f77b4", "#2ca02c", "#d62728", "#9467bd"]; UNCON_COLOR = "#6a51a3"
+    comps = []
+    for c in alt["components"]:
+        d = (pd.read_parquet(out3 / f"{c['gap_mode']}.parquet", columns=cols) if "gap_mode" in c
+             else pd.DataFrame({k: sem[k][np.isin(sem["decay_name"], c["decays"])] for k in cols}))
+        d = d[np.isfinite(d[cols[:4]].to_numpy()).all(axis=1) & (d["total_weight"].to_numpy() > 0)]
+        wc = np.zeros(len(d))
+        for sp in d["decay_name"].unique():
+            m = (d["decay_name"] == sp).to_numpy(); wc[m] = d["total_weight"].to_numpy()[m] / d["total_weight"].to_numpy()[m].sum()
+        wc *= c["fraction"] / wc.sum(); mxc = d["Mx"].to_numpy(float); xm = np.average(mxc, weights=wc)
+        comps.append(dict(legend=c["legend"], w=wc, mx=mxc, el=d["El_B"].to_numpy(float), q2=d["q2"].to_numpy(float), xm=xm,
+                          delta=bool(np.sqrt(np.average((mxc - xm) ** 2, weights=wc)) < 0.02)))
+        print(f"  alt gap component {c['legend']}: {len(d):,} events, species {sorted(d['decay_name'].unique())}, fraction {c['fraction']:.2f}")
+    w = np.concatenate([c["w"] for c in comps]); owner = np.concatenate([np.full(len(c["w"]), i) for i, c in enumerate(comps)])
+    xs = {k: np.concatenate([c[k] for c in comps]) for k in ("mx", "el", "q2")}; mx2 = xs["mx"] ** 2
+    sup = {"Mx": (mx2.min() * 0.999, mx2.max() * 1.001), "El": (0.0, xs["el"].max() * 1.001), "Q2": (0.0, xs["q2"].max() * 1.001)}
+    Mx_lo, Mx_hi = np.sqrt(sup["Mx"][0]), np.sqrt(sup["Mx"][1]); Ns = sorted(set(n_moments)); sig = alt.get("smoothing_sigma", {})
+    labels = {"Mx": (r"$M_X\ [\mathrm{GeV}]$", r"$f(M_X)\ [\mathrm{GeV}^{-1}]$"), "El": (r"$E_\ell^B\ [\mathrm{GeV}]$", r"$f(E_\ell)\ [\mathrm{GeV}^{-1}]$"),
+              "Q2": (r"$q^2\ [\mathrm{GeV}^2]$", r"$f(q^2)\ [\mathrm{GeV}^{-2}]$")}
+
+    def prep(obs):
+        lo, hi = sup[obs]; span = hi - lo; x_arr = {"Mx": mx2, "El": xs["el"], "Q2": xs["q2"]}[obs]
+        mu = residual_mu01(x_arr, w, x_arr, np.zeros_like(w), lo, span, max(n_moments) + 1)
+        if obs == "Mx":                   # displayed on a linear Mx axis (Jacobian 2 Mx)
+            xgrid = np.sqrt(lo + t_grid * span); jac = 2 * xgrid; xdata, xlim, edges = xs["mx"], (1.65, Mx_hi), np.linspace(Mx_lo, Mx_hi, 1200)
+        else:
+            xgrid = lo + t_grid * span; jac = np.ones_like(xgrid); xdata, xlim, edges = x_arr, (lo, hi), np.linspace(lo, hi, 500)
+        db = edges[1] - edges[0]
+        dens = [gaussian_filter1d(np.histogram(xdata, edges, weights=np.where(owner == i, w, 0.))[0] / db, float(sig.get(obs.lower(), 0.05)) / db, mode="reflect")
+                for i in range(len(comps))]
+        P = dict(obs=obs, xgrid=xgrid, xlim=xlim, xc=0.5 * (edges[:-1] + edges[1:]), dens=dens, curves=[])
+        P["ymax"] = sum(d for d, c in zip(dens, comps) if not (obs == "Mx" and c["delta"])).max()
+        for n in Ns:
+            ok_h, _ = hausdorff_moment_check(mu[:n])
+            f_con, _ = maxent_pdf(mu[:n], t_grid, tp_full=tp_grid, alpha=alpha[obs], beta=beta[obs]); f_unc, _ = maxent_pdf(mu[:n], t_grid, tp_full=tp_grid, alpha=0., beta=0.)
+            pc, pu = (f_con / span) * jac, (f_unc / span) * jac
+            eps = max(max(abs(np.trapz(t_grid ** k * f, t_grid) - mu[k]) for k in range(n)) for f in (f_con, f_unc))
+            print(f"  alt gap {obs} N={n}: Hausdorff {'ok' if ok_h else 'FAIL'}  max eps_m={eps:.1e}")
+            sel = xgrid > 3.0 if obs == "Mx" else slice(None)
+            P["ymax"] = max(P["ymax"], pc[sel].max(), pu[sel].max()); P["curves"].append((n, pc, pu))
+        return P
+
+    def draw(axes, P, logy, legend):
+        obs, xc = P["obs"], P["xc"]; stem_h = {i: c["w"].sum() / ((Mx_hi - Mx_lo) / 350) for i, c in enumerate(comps)}   # delta stem height = 350-bin histogram peak (arbitrary)
+        for ax, (n, pc, pu) in zip(axes.flat, P["curves"]):
+            base = np.zeros_like(xc)
+            for i, (c, d) in enumerate(zip(comps, P["dens"])):
+                if obs == "Mx" and c["delta"]:
+                    ax.vlines(c["xm"], 1e-3 if logy else 0, stem_h[i], color=pal[i], lw=3.5, alpha=0.9, label=c["legend"], zorder=1); continue
+                ax.fill_between(xc, base if not (obs == "Mx" and logy) else np.maximum(base, 1e-3), base + d, color=pal[i], alpha=0.55, lw=0, label=c["legend"]); base = base + d
+            ax.plot(xc, base, color="0.25", lw=0.9)
+            ax.plot(P["xgrid"], pu, color=UNCON_COLOR, lw=2.2, ls="--", label="Unconstrained"); ax.plot(P["xgrid"], pc, color=RECON_COLOR, lw=2.4, label="Constrained")
+            ax.text(0.16 if obs == "Mx" else 0.06, 0.94, rf"$N={n}$", transform=ax.transAxes, fontsize=26, color="0.15", ha="left", va="top")
+            ax.set_xlim(*P["xlim"]); ax.tick_params(axis="both", which="both", direction="in", top=True, right=True, labelsize=19)
+            for sp in ax.spines.values(): sp.set_visible(True)
+            if legend: ax.legend(fontsize=13.5, loc="upper right", frameon=False, handlelength=1.4, labelspacing=0.5, borderaxespad=0.3)
+        a0 = axes.flat[0]; a0.set_ylim(0, 1.45 * P["ymax"])
+        if logy: a0.set_yscale("log"); a0.set_ylim(1e-3, 5 * max(stem_h.values()))
+        for ax in axes[-1, :]: ax.set_xlabel(labels[obs][0], fontsize=26)
+        for ax in axes[:, 0]: ax.set_ylabel(labels[obs][1], fontsize=26)
+
+    PP = {obs: prep(obs) for obs in ("Mx", "El", "Q2")}
+    for obs, logy, fname in (("Mx", True, "maxent_convergence_Mx2_overlay_2x2_logy.pdf"), ("Mx", False, "maxent_convergence_Mx2_overlay_2x2.pdf"),
+                             ("El", False, "maxent_convergence_El_overlay_2x2.pdf"), ("Q2", False, "maxent_convergence_Q2_overlay_2x2.pdf")):
+        fig, axes = plt.subplots(2, 2, figsize=(9.5, 9.0), dpi=250, sharex=True, sharey=True)
+        draw(axes, PP[obs], logy, legend=True); fig.tight_layout(); fig.subplots_adjust(wspace=0.06, hspace=0.08)
+        fig.savefig(out / fname, bbox_inches="tight"); plt.close(fig); print(f"  → {out / fname}")
+    for logy, fname in ((True, "maxent_convergence_all3_overlay_2x2_logy.pdf"), (False, "maxent_convergence_all3_overlay_2x2.pdf")):
+        fig = plt.figure(figsize=(28, 9.2), dpi=200); sfs = fig.subfigures(1, 3, wspace=0.02)
+        for sf, obs in zip(sfs, ("Mx", "El", "Q2")):
+            axes = sf.subplots(2, 2, sharex=True, sharey=True); draw(axes, PP[obs], logy and obs == "Mx", legend=False)
+            sf.subplots_adjust(left=0.19, right=0.985, bottom=0.13, top=0.985, wspace=0.06, hspace=0.08)
+        h = [Patch(facecolor=pal[i], alpha=0.55, label=c["legend"]) for i, c in enumerate(comps)] + [
+            Line2D([], [], color=UNCON_COLOR, lw=2.2, ls="--", label="Unconstrained"), Line2D([], [], color=RECON_COLOR, lw=2.4, label="Constrained")]
+        fig.legend(handles=h, loc="lower center", ncol=len(h), frameon=False, fontsize=22, bbox_to_anchor=(0.5, -0.045), handlelength=1.8)
+        fig.savefig(out / fname, bbox_inches="tight"); plt.close(fig); print(f"  → {out / fname}")
+
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -489,65 +580,148 @@ def main():
     # ── Figure: nominal MaxEnt convergence (no smearing) ─────────────────────
     print("Figure: nominal MaxEnt convergence …")
     N_LIST_NOM = sorted(set(n_moments))
+    # Mx is displayed on a linear (not squared) axis, transformed via the Jacobian
+    # f(Mx) = f(Mx^2) * |d(Mx^2)/dMx| = f(Mx^2) * 2*Mx. The reconstruction itself still uses the
+    # true full support (Mx2_lo_nom, Mx2_hi_nom); only the display range is capped at 3 GeV
+    # (9 GeV^2) since the mode's density is negligible above that.
+    Mx_grid_disp = np.sqrt(Mx2_grid)
+    ones_El = np.ones_like(El_grid)
+    ones_Q2 = np.ones_like(Q2_grid)
     obs_nom_cfg = [
-        ("Mx2", "Mx", Mx2_grid, bct_Mx2, h_Mx2, db_Mx2, Mx2_lo_nom, Mx2_hi_nom,
-         mu_nom_Mx2, r"$M_X^2\ [\mathrm{GeV}^2]$", r"$f(M_X^2)\ [\mathrm{GeV}^{-2}]$",
-         "maxent_convergence_Mx2.png"),
-        ("El",  "El", El_grid,  bct_El,  h_El,  db_El,  El_lo_nom,  El_hi_nom,
+        ("Mx", "Mx", Mx_grid_disp, 2.*Mx_grid_disp, bct_Mx, h_Mx, db_Mx,
+         Mx_lo_nom, 3.0, mu_nom_Mx2, r"$M_X\ [\mathrm{GeV}]$",
+         r"$f(M_X)\ [\mathrm{GeV}^{-1}]$", "maxent_convergence_Mx2.png", "right"),
+        ("El",  "El", El_grid,  ones_El, bct_El,  h_El,  db_El,  El_lo_nom,  El_hi_nom,
          mu_nom_El,  r"$E_\ell^B\ [\mathrm{GeV}]$", r"$f(E_\ell)\ [\mathrm{GeV}^{-1}]$",
-         "maxent_convergence_El.png"),
-        ("Q2",  "Q2", Q2_grid,  bct_Q2,  h_Q2,  db_Q2,  Q2_lo_nom,  Q2_hi_nom,
+         "maxent_convergence_El.png", "left"),
+        ("Q2",  "Q2", Q2_grid,  ones_Q2, bct_Q2,  h_Q2,  db_Q2,  Q2_lo_nom,  Q2_hi_nom,
          mu_nom_Q2,  r"$q^2\ [\mathrm{GeV}^2]$",   r"$f(q^2)\ [\mathrm{GeV}^{-2}]$",
-         "maxent_convergence_Q2.png"),
+         "maxent_convergence_Q2.png", "right"),
     ]
     if skip_diagnostics:
         obs_nom_cfg = []  # --toy-job/--merge/--submit: skip standalone diagnostic figures
-    for obs_lbl, obs_key, xgrid, bct, h_true, db, xlo, xhi, mu_nom_obs, xlabel, ylabel, fname in obs_nom_cfg:
+    for (obs_lbl, obs_key, xgrid, jac, bct, h_true, db, xlo, xhi, mu_nom_obs, xlabel, ylabel,
+         fname, corner) in obs_nom_cfg:
         fig_c, axes_c = plt.subplots(1, len(N_LIST_NOM),
-                                     figsize=(3.8 * len(N_LIST_NOM), 4), dpi=150, sharey=True)
+                                     figsize=(4.6 * len(N_LIST_NOM), 5.0), dpi=200, sharey=True)
         if len(N_LIST_NOM) == 1:
             axes_c = [axes_c]
-        span_obs = xhi - xlo
+        span_obs = (Mx2_hi_nom - Mx2_lo_nom) if obs_key == "Mx" else (xhi - xlo)
         a, b = alpha[obs_key], beta[obs_key]
+        tx = 0.94 if corner == "right" else 0.06
+        ha = "right" if corner == "right" else "left"
 
-        def _draw_convergence(axes_list, al, be, title_suffix):
+        def _draw_convergence(fig, axes_list, al, be):
+            handles = None
             for ax, n in zip(axes_list, N_LIST_NOM):
                 ok_h, worst = hausdorff_moment_check(mu_nom_obs[:n])
                 f_t, _ = maxent_pdf(mu_nom_obs[:n], t_grid, tp_full=tp_grid, alpha=al, beta=be)
-                f_phys = f_t / span_obs
+                f_phys = (f_t / span_obs) * jac
                 mom_err = max(abs(np.trapz(t_grid**k * f_t, t_grid) - mu_nom_obs[k])
                              for k in range(n))
-                ax.bar(bct, h_true, width=db, color=TRUTH_COLOR, alpha=0.55, label=f"True {gap_mode}")
-                ax.plot(xgrid, f_phys, color=RECON_COLOR, lw=2.2,
-                        label=f"MaxEnt ({n} mom.)\nerr={mom_err:.1e}")
-                ax.set_title(f"{n} moments  Hausdorff {'OK' if ok_h else 'FAIL'} "
-                             f"({worst:.2e}){title_suffix}", fontsize=12)
-                ax.set_xlabel(xlabel, fontsize=13)
-                ax.tick_params(labelsize=11)
-                ax.set_xlim(xlo, xhi);  ax.set_ylim(bottom=0);  ax.grid(alpha=0.25)
-                ax.legend(fontsize=11, loc="upper right")
-            axes_list[0].set_ylabel(ylabel, fontsize=13)
+                h_truth = ax.bar(bct, h_true, width=db, color=TRUTH_COLOR, alpha=0.5,
+                                  label="Truth", linewidth=0)
+                h_recon, = ax.plot(xgrid, f_phys, color=RECON_COLOR, lw=2.2, label="MaxEnt")
+                handles = [h_truth, h_recon]
+                status = "pass" if ok_h else "fail"
+                status_color = "0.25" if ok_h else "#c0392b"
+                ax.text(tx, 0.95, rf"$N={n}$", transform=ax.transAxes,
+                        fontsize=19, color="0.15", ha=ha, va="top")
+                ax.text(tx, 0.85, f"Hausdorff {status}", transform=ax.transAxes,
+                        fontsize=17, color=status_color, ha=ha, va="top")
+                ax.text(tx, 0.75, rf"$\varepsilon_m={mom_err:.1e}$",
+                        transform=ax.transAxes, fontsize=17, color="0.4", ha=ha, va="top")
+                ax.set_xlabel(xlabel, fontsize=17)
+                ax.set_xlim(xlo, xhi);  ax.set_ylim(bottom=0)
+                ax.tick_params(axis="both", which="both", direction="in",
+                                top=True, right=True, labelsize=13)
+                for spine in ax.spines.values():
+                    spine.set_visible(True)
+            # Headroom above the tallest curve/histogram so the corner annotations (placed at
+            # y>=0.75 in axes fraction) never overlap the plotted data, without needing a
+            # background box behind the text.
+            top = axes_list[0].get_ylim()[1]
+            axes_list[0].set_ylim(0, 1.45 * top)
+            fig.legend(handles, ["Truth", "MaxEnt"], fontsize=14, frameon=False,
+                       loc="lower center", ncol=2, bbox_to_anchor=(0.5, -0.02))
 
-        _draw_convergence(axes_c, a, b, "")
-        axes_c[0].set_ylabel(ylabel, fontsize=13)
-        fig_c.suptitle(f"Nominal MaxEnt convergence ({obs_lbl}) — gap: {gap_mode}", fontsize=13)
-        fig_c.tight_layout()
-        fig_c.savefig(fig_dir / fname);  plt.close(fig_c)
+        _draw_convergence(fig_c, axes_c, a, b)
+        axes_c[0].set_ylabel(ylabel, fontsize=17)
+        fig_c.subplots_adjust(wspace=0.06)
+        fig_c.tight_layout(rect=(0, 0.06, 1, 1))
+        fig_c.savefig(fig_dir / fname, bbox_inches="tight");  plt.close(fig_c)
         print(f"  → {fig_dir / fname}")
 
-        # For El: also save unconstrained version as separate figure
-        if obs_key == "El" and (a != 0 or b != 0):
+        # Companion figure with boundary constraints switched off, whenever this observable
+        # is actually constrained -- isolates the effect of the endpoint-power priors derived
+        # in sec:idea+approach from the moment-inversion result itself.
+        if a != 0 or b != 0:
             fig_u, axes_u = plt.subplots(1, len(N_LIST_NOM),
-                                         figsize=(3.8 * len(N_LIST_NOM), 4), dpi=150, sharey=True)
+                                         figsize=(4.6 * len(N_LIST_NOM), 5.0), dpi=200, sharey=True)
             if len(N_LIST_NOM) == 1:
                 axes_u = [axes_u]
-            _draw_convergence(axes_u, 0., 0., " (unconstrained)")
-            fig_u.suptitle(f"Nominal MaxEnt convergence ({obs_lbl}, unconstrained) — gap: {gap_mode}",
-                           fontsize=13)
-            fig_u.tight_layout()
+            _draw_convergence(fig_u, axes_u, 0., 0.)
+            axes_u[0].set_ylabel(ylabel, fontsize=17)
+            fig_u.subplots_adjust(wspace=0.06)
+            fig_u.tight_layout(rect=(0, 0.06, 1, 1))
             unc_fname = fname.replace(".png", "_unconstrained.png")
-            fig_u.savefig(fig_dir / unc_fname);  plt.close(fig_u)
+            fig_u.savefig(fig_dir / unc_fname, bbox_inches="tight");  plt.close(fig_u)
             print(f"  → {fig_dir / unc_fname}")
+
+        # Paper figure: unconstrained vs. constrained overlaid in the SAME panel, 2x2 in N,
+        # sized for a single-column placement (drawn ~2.8x oversize with fonts to match, so
+        # text lands at a normal ~11-12pt once LaTeX shrinks the raster back to columnwidth).
+        if a != 0 or b != 0:
+            UNCON_COLOR = "#6a51a3"
+            fig_o, axes_o = plt.subplots(2, 2, figsize=(9.5, 9.0), dpi=250, sharex=True, sharey=True)
+            ymax_all = 0.0
+            for ax, n in zip(axes_o.flat, N_LIST_NOM):
+                ok_h, _ = hausdorff_moment_check(mu_nom_obs[:n])
+                f_con, _  = maxent_pdf(mu_nom_obs[:n], t_grid, tp_full=tp_grid, alpha=a, beta=b)
+                f_unc, _  = maxent_pdf(mu_nom_obs[:n], t_grid, tp_full=tp_grid, alpha=0., beta=0.)
+                eps_con = max(abs(np.trapz(t_grid**k * f_con, t_grid) - mu_nom_obs[k]) for k in range(n))
+                eps_unc = max(abs(np.trapz(t_grid**k * f_unc, t_grid) - mu_nom_obs[k]) for k in range(n))
+                phys_con = (f_con / span_obs) * jac
+                phys_unc = (f_unc / span_obs) * jac
+                ymax_all = max(ymax_all, float(np.max(phys_con)), float(np.max(phys_unc)),
+                                float(np.max(h_true)))
+                ax.bar(bct, h_true, width=db, color=TRUTH_COLOR, alpha=0.5, label="Truth",
+                       linewidth=0)
+                ax.plot(xgrid, phys_unc, color=UNCON_COLOR, lw=2.2, ls="--",
+                        label=f"Unconstrained\n" rf"$\varepsilon_m={eps_unc:.1e}$")
+                ax.plot(xgrid, phys_con, color=RECON_COLOR, lw=2.4,
+                        label=f"Constrained\n" rf"$\varepsilon_m={eps_con:.1e}$")
+                ax.text(0.06, 0.94, rf"$N={n}$", transform=ax.transAxes,
+                        fontsize=26, color="0.15", ha="left", va="top")
+                ax.set_xlim(xlo, xhi)
+                ax.tick_params(axis="both", which="both", direction="in",
+                                top=True, right=True, labelsize=19)
+                for spine in ax.spines.values():
+                    spine.set_visible(True)
+                ax.legend(fontsize=13.5, loc="upper right", frameon=False,
+                          handlelength=1.4, labelspacing=0.55, borderaxespad=0.3)
+            # Headroom above the tallest curve/histogram across ALL 4 panels (computed directly
+            # from the plotted arrays, not read back via get_ylim() -- with sharey=True the
+            # autoscaled top isn't guaranteed to be finalized yet at that point in the script)
+            # so the per-panel legend (now with each epsilon_m on its own line) never overlaps
+            # the plotted data.
+            axes_o.flat[0].set_ylim(0, 1.65 * ymax_all)
+            for ax in axes_o[-1, :]:
+                ax.set_xlabel(xlabel, fontsize=26)
+            for ax in axes_o[:, 0]:
+                ax.set_ylabel(ylabel, fontsize=26)
+            fig_o.tight_layout()
+            fig_o.subplots_adjust(wspace=0.06, hspace=0.08)
+            overlay_fname = fname.replace(".png", "_overlay_2x2.pdf")
+            fig_o.savefig(fig_dir / overlay_fname, bbox_inches="tight");  plt.close(fig_o)
+            print(f"  → {fig_dir / overlay_fname}")
+
+    # ── Alternative (mixed) gap truth: same convergence figures for config hausdorff_toy.alt_gap ──
+    if ht.get("alt_gap") and not skip_diagnostics:
+        print("Figure: alternative-gap MaxEnt convergence …")
+        sem_m = ~is_gap
+        plot_alt_gap(ht["alt_gap"], dict(Mx=mx[sem_m], El_B=el[sem_m], q2=q2[sem_m], total_weight=w[sem_m], decay_name=df_full["decay_name"].to_numpy()[sem_m]),
+                     Path(cfg["paths"]["output"]) / "3", t_grid, tp_grid, n_moments, alpha, beta, fig_dir)
 
     # ── Base weight for the toy loop (systematics multiply this, see below) ────
     N_ev        = len(df_full)
@@ -1131,8 +1305,8 @@ def main():
                        "Q2": r"$f(q^2)\ [\mathrm{GeV}^{-2}]$"}
         if N_GRID:
             fig0, axes0 = plt.subplots(len(OBS), len(N_GRID),
-                                        figsize=(4.6 * len(N_GRID), 3.8 * len(OBS)),
-                                        dpi=150, sharex="row")
+                                        figsize=(5.2 * len(N_GRID), 4.6 * len(OBS)),
+                                        dpi=200, sharex="row")
             if len(OBS) == 1:
                 axes0 = axes0[np.newaxis, :]
             if len(N_GRID) == 1:
@@ -1143,18 +1317,18 @@ def main():
                     c = recon_cache.get((obs, n))
                     if c is None:
                         ax.text(0.5, 0.5, "no converged toys", ha="center", va="center",
-                                 transform=ax.transAxes, fontsize=9, color="crimson")
+                                 transform=ax.transAxes, fontsize=13, color="crimson")
                         ax.set_xticks([]); ax.set_yticks([])
                         continue
                     ax.bar(c["bct"], c["h_true"], width=c["db"], color=TRUTH_COLOR, alpha=0.45,
-                            label=f"True {gap_mode}" if (row == 0 and col == 0) else "_")
+                            label="Truth" if (row == 0 and col == 0) else "_")
                     ax.fill_between(c["xgrid"], c["lo2"], c["hi2"], color=RECON_COLOR, alpha=0.15,
                                      label="95% band" if (row == 0 and col == 0) else "_")
                     ax.fill_between(c["xgrid"], c["lo1"], c["hi1"], color=RECON_COLOR, alpha=0.30,
                                      label="68% band" if (row == 0 and col == 0) else "_")
-                    ax.plot(c["xgrid"], c["f_nom_phys"], color=RECON_COLOR, lw=2.0,
+                    ax.plot(c["xgrid"], c["f_nom_phys"], color=RECON_COLOR, lw=2.2,
                              label="Nominal MaxEnt" if (row == 0 and col == 0) else "_")
-                    ax.plot(c["xgrid"], c["med"], color=RECON_COLOR, lw=1.5, linestyle="--",
+                    ax.plot(c["xgrid"], c["med"], color=RECON_COLOR, lw=1.6, linestyle="--",
                              label="Toy median" if (row == 0 and col == 0) else "_")
                     # Display range: 0.5-99.5th percentile of the true gap-mode distribution
                     # (+5% margin), not the full physical support -- the support can have a
@@ -1163,23 +1337,25 @@ def main():
                     if obs == "Mx":
                         disp_hi = min(disp_hi, 3.0)
                     ax.set_xlim(max(c["xlo"], disp_lo), min(c["xhi"], disp_hi))
-                    # ylim from the truth histogram, not the toy bands -- a poorly-converged
-                    # 68%/95% band can otherwise blow up the scale and hide everything else.
-                    ax.set_ylim(0, 1.5 * max(float(np.max(c["h_true"])), 1e-300))
-                    ax.grid(alpha=0.25)
-                    ax.tick_params(labelsize=8)
-                    ax.set_xlabel(GRID_XLABEL[obs], fontsize=9)
+                    # Headroom above the truth histogram (not the toy bands, which can blow up
+                    # the scale on a poorly-converged fit) so the corner label never overlaps
+                    # the plotted curves/bands.
+                    ax.set_ylim(0, 1.75 * max(float(np.max(c["h_true"])), 1e-300))
+                    ax.tick_params(axis="both", which="both", direction="in",
+                                    top=True, right=True, labelsize=13)
+                    for spine in ax.spines.values():
+                        spine.set_visible(True)
+                    if row == len(OBS) - 1:
+                        ax.set_xlabel(GRID_XLABEL[obs], fontsize=17)
                     if col == 0:
-                        ax.set_ylabel(GRID_YLABEL[obs], fontsize=9)
-                    ax.set_title(f"{obs}, n={n}  ({c['n_conv']}/{n_toys} conv.)", fontsize=9)
+                        ax.set_ylabel(GRID_YLABEL[obs], fontsize=17)
+                    ax.text(0.95, 0.95, rf"$N={n}$" "\n" f"{c['n_conv']}/{n_toys} conv.",
+                            transform=ax.transAxes, fontsize=13, color="0.25",
+                            ha="right", va="top")
             h0, l0 = axes0[0, 0].get_legend_handles_labels()
-            fig0.legend(h0, l0, loc="upper center", ncol=4, frameon=False,
-                        bbox_to_anchor=(0.5, 1.0), fontsize=10)
-            fig0.suptitle(
-                f"Gap reconstruction — {gap_mode}  run: {run_label}  ({n_toys} toys)\n"
-                f"systematics: {active or 'none (stat + support only)'}",
-                fontsize=11, y=1.05)
-            fig0.tight_layout(rect=[0.0, 0.0, 1.0, 0.95])
+            fig0.legend(h0, l0, loc="lower center", ncol=5, frameon=False,
+                        bbox_to_anchor=(0.5, -0.02), fontsize=14)
+            fig0.tight_layout(rect=(0, 0.04, 1, 1))
             fig0.savefig(run_fig_dir / "reconstruction_grid_3x3.png", bbox_inches="tight")
             plt.close(fig0)
             print(f"  → {run_fig_dir / 'reconstruction_grid_3x3.png'}")
@@ -1456,7 +1632,7 @@ def main():
         from plothist import get_color_palette
         _pal = [mcolors.to_hex(c) for c in get_color_palette("cubehelix", len(solo_labels))]
         colors = dict(zip(solo_labels, _pal))
-        fig, axes = plt.subplots(1, len(OBS), figsize=(5 * len(OBS), 5), dpi=150, sharey=True)
+        fig, axes = plt.subplots(1, len(OBS), figsize=(5.5 * len(OBS), 5.5), dpi=200, sharey=True)
         if len(OBS) == 1:
             axes = [axes]
         for ax, obs in zip(axes, OBS):
@@ -1472,20 +1648,21 @@ def main():
                 bottoms += vals
             for i, r in enumerate(obs_rows):
                 if r["consistency_ratio"] is not None:
-                    ax.text(i, 103, f"{r['consistency_ratio']:.1f}x", ha="center", fontsize=8)
+                    ax.text(i, 106, f"{r['consistency_ratio']:.1f}x", ha="center", fontsize=13)
                 else:
-                    ax.text(i, 103, "n/a", ha="center", fontsize=8, color="crimson")
-            ax.set_ylim(0, 115)
-            ax.set_xlabel("n moments", fontsize=10)
-            ax.set_title(obs, fontsize=12)
-            ax.grid(axis="y", alpha=0.3)
-        axes[0].set_ylabel("fraction of systematic (non-stat) variance [%]", fontsize=10)
-        fig.legend(loc="upper center", ncol=len(solo_labels), frameon=False,
-                   bbox_to_anchor=(0.5, 1.08), fontsize=9)
-        fig.suptitle(f"Systematic variance budget decomposition ({gap_mode}, {n_toys} toys)\n"
-                     "labels above bars: actual/predicted ratio for the combined 'all' run "
-                     "(quadrature-sum consistency check)", fontsize=11, y=1.16)
-        fig.tight_layout()
+                    ax.text(i, 106, "n/a", ha="center", fontsize=13, color="#c0392b")
+            ax.set_ylim(0, 122)
+            ax.set_xlabel(r"$N$ moments", fontsize=17)
+            ax.text(0.06, 0.94, obs, transform=ax.transAxes, fontsize=19,
+                    color="0.15", ha="left", va="top")
+            ax.tick_params(axis="both", which="both", direction="in",
+                            top=True, right=True, labelsize=13)
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+        axes[0].set_ylabel("fraction of systematic (non-stat) variance [%]", fontsize=15)
+        fig.legend(loc="lower center", ncol=len(solo_labels), frameon=False,
+                   bbox_to_anchor=(0.5, -0.05), fontsize=14)
+        fig.tight_layout(rect=(0, 0.06, 1, 1))
         fig.savefig(sys_fig_dir / "decomposition.png", bbox_inches="tight")
         plt.close(fig)
         print(f"  → {sys_fig_dir / 'decomposition.png'}")

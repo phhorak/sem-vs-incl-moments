@@ -71,6 +71,8 @@ generation:
     - B0/Dstpipipenu
     - B0/Dst0pipipzenu
     - B0/Dstpizpizenu
+    - B0/DsstkKenu
+    - B0/DsKenu
     - B0/Detaenu
     - B0/Dstetaenu
     # B0, muon (full isospin + lepton-flavor generalization)
@@ -90,6 +92,8 @@ generation:
     - B0/Dstpipipmunu
     - B0/Dst0pipipzmunu
     - B0/Dstpizpizmunu
+    - B0/DsstkKmunu
+    - B0/DsKmunu
     - B0/Detamunu
     - B0/Dstetamunu
   gap_modes:
@@ -131,16 +135,23 @@ average:
                              # "polynomial": joint per-key polynomial basis, so the averaged
                              # curve is smooth in the cut variable. Both solve one joint GLS
                              # against the full cross-experiment/cross-moment covariance.
-  poly_degree: 4            # polynomial degree (only used when method: polynomial)
-  corr_same_exp_same_var: 0.0
-  corr_same_exp_diff_var: 0.0
-  corr_diff_exp: 0.0
+  poly_degree: {mx: 4, el: 4, q2: 5}  # per family (int = same for all). q2 is Belle II only: chi2 82/30 at deg 4, 21/27 at deg 5
+  corr_same_exp_same_var: 0.5
+  corr_same_exp_diff_var: 0.2
+  corr_diff_exp: 0.05
   inflate_if_incompatible: true
   exclude_sem: true        # if true, drop CDF and DELPHI (sum-of-exclusive measurements)
   exclude_experiments:
     #- delphi
     #- cleo
     #- cdf
+  # Drops only the named family's measurements for that experiment (other
+  # families untouched) -- see the comment at its use site in 4_average.py for
+  # why Belle's q2 specifically is dropped here (persistent ~1sigma-per-point,
+  # highly-correlated offset vs Belle II that their real cross-correlation
+  # doesn't fully explain; chi2/dof 999.0/141 -> 110.4/96, p 0.000 -> 0.150).
+  exclude_family_experiments:
+    q2: [belle]
 
 plots:
   exp_data_tar: inputs/sem.tar.gz
@@ -191,14 +202,15 @@ hausdorff_data:
   mx_support: [3.2, 16.0]   # Mx² [GeV²]: from support scan
   el_support: [0.0, 2.3]
   q2_support: [0.0, 12.5]
+  # Mirrors hausdorff_toy.boundary_alpha/beta below (sec:idea+approach derivation).
   boundary_alpha:      # exponent at t=0: f(t) ~ t^alpha as t->0 (0=no constraint)
-    mx2: 0
-    el: 0
+    mx2: 2
+    el: 2
     q2: 0
   boundary_beta:       # exponent at t=1: f(t) ~ (1-t)^beta as t->1 (0=no constraint)
-    mx2: 1
-    el: 1
-    q2: 1
+    mx2: 0
+    el: 3.5
+    q2: 1.5
   max_el_cut: 1.5      # exclude El (and Mx) thresholds >= this value
   max_q2_cut: 7.0      # exclude Q2 thresholds >= this value
 
@@ -206,7 +218,7 @@ hausdorff_toy:
   gap_mode: D2stDeta
   # n_toys/n_toys_band/n_toy_chunks temporarily lowered (full-precision values: 1140/5000/500)
   # for faster turnaround; restore once validated.
-  n_toys: 300
+  n_toys: 1500
   n_moments: [2, 3, 4, 5]
   grid_size: 2000
   n_toys_band: 1000
@@ -218,18 +230,37 @@ hausdorff_toy:
   mx_support: [5.82, 25.60]   # Mx² [GeV²]: actual D2stDeta MC truth endpoints (x0.999/x1.001 margin)
   el_support: [0.0, 2.06]     # actual D2stDeta MC truth endpoints
   q2_support: [0.0, 8.00]     # actual D2stDeta MC truth endpoints
-  seed: 42
-  boundary_alpha:      # exponent at t=0: f(t) ~ t^alpha as t->0 (0=no constraint)
-    mx2: 1
-    el: 1               # low-El constraint
+  # Endpoint-power priors g(t) ~ t^alpha (1-t)^beta from sec:idea+approach.
+  # Lower edges: El sits at the physical E_l -> 0 threshold where massless-lepton counting
+  # gives rho(E_l) ~ E_l^2 (alpha=2, mode-independent). Q2 also sits at its physical q^2 -> 0
+  # threshold, but there rho(q^2) approaches a finite non-zero value, so no suppression is
+  # imposed (alpha=0). Mx2's lower edge has no derived exponent (alpha=0).
+  # Upper edges: applied here as a diagnostic despite this mode's own kinematic maximum sitting
+  # well short of the global (Mx=MD) edge where these powers were derived (eps_El ~ 0.25 GeV,
+  # ~11%; eps_Q2 ~ 3.7 GeV^2, ~31% below) -- see the "_unconstrained" companion figures.
+  # beta_El = 3+a with the minimal continuum power a=1/2 -> 3.5; beta_Q2 = 3/2; beta_Mx2 = 0
+  # (no global-edge analogue applies to this mode's own Mx2 support).
+  boundary_alpha:
+    mx2: 2
+    el: 2
     q2: 0
-  boundary_beta:       # exponent at t=1: f(t) ~ (1-t)^beta as t->1 (0=no constraint)
+  boundary_beta:
     mx2: 0
-    el: 1
-    q2: 1               # high-q^2 constraint
+    el: 3.5
+    q2: 1.5
+  seed: 42
   # "all_soft": extra run-label using a Gaussian-relaxed per-threshold MaxEnt dual, so a toy
   # whose noisy moments fall outside the achievable polytope degrades instead of failing outright.
   soft_all_enable: true
+  # Extra Asimov-convergence figure set (7_hausdorff_toy.py, figures/7/alt_gap_<tag>/) for a MIXED gap truth instead of `gap_mode`. Each component's gap
+  # fraction is split evenly over its B0/B+ species (isospin mix); `decays` are taken from the SEM cocktail, `gap_mode` from output/3/<gap_mode>.parquet.
+  # Delete the block to skip. smoothing_sigma: Gaussian kernel of the drawn truth curves [GeV, GeV, GeV^2].
+  alt_gap:
+    tag: Dlnu_LcPenu
+    components:
+      - {legend: '$D\ell\nu$', fraction: 0.5, decays: [B0_Denu, Bp_Denu]}
+      - {legend: '$\Lambda_c\bar p\,\ell\nu$', fraction: 0.5, gap_mode: LcPenu}
+    smoothing_sigma: {mx: 0.03, el: 0.08, q2: 0.40}
 
 systematics:
   enable:

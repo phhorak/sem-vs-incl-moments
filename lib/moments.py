@@ -263,14 +263,13 @@ def compute_curves_np(
     return compute_curves_from_context(ctx, w, el_cuts, q2_cuts)
 
 
-def compute_raw_curves_np(
-    mx2: np.ndarray, el: np.ndarray, q2: np.ndarray, w: np.ndarray,
-    el_cuts: np.ndarray, q2_cuts: np.ndarray,
-) -> dict[str, np.ndarray]:
-    """Like compute_curves_np, but returns RAW moments E[X^n] (n=1,2,3) above each cut instead
-    of central moments -- what the Hausdorff/MaxEnt data pipeline (8_hausdorff_data.py) and its
-    toy loop need directly (raw_to_mu01 consumes raw moments, not central ones)."""
-    ctx = build_curve_context(mx2, el, q2)
+def compute_raw_curves_from_context(ctx: dict, w: np.ndarray, el_cuts: np.ndarray,
+                                     q2_cuts: np.ndarray) -> dict[str, np.ndarray]:
+    """Cached-context counterpart to compute_raw_curves_np (mirrors compute_curves_from_context):
+    pass a `ctx` built once via build_curve_context (the O(N log N) sort) and reuse it across many
+    toys that only vary `w` -- turns each toy's cost from O(N log N) back down to O(N), which
+    matters when N is tens of millions of events and the toy loop redoes this thousands of times.
+    """
     el_order, el_s, N_el = ctx["el_order"], ctx["el_s"], ctx["N_el"]
     w_el = w[el_order]
     cw    = np.concatenate(([0.], np.cumsum(w_el)))
@@ -320,3 +319,14 @@ def compute_raw_curves_np(
         out["q2_3"].append(sf(cq6, k, N_q2) / sw)
 
     return {k: np.asarray(v, dtype=float) for k, v in out.items()}
+
+
+def compute_raw_curves_np(
+    mx2: np.ndarray, el: np.ndarray, q2: np.ndarray, w: np.ndarray,
+    el_cuts: np.ndarray, q2_cuts: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Like compute_curves_np, but returns RAW moments E[X^n] (n=1,2,3) above each cut instead
+    of central moments -- what the Hausdorff/MaxEnt data pipeline (8_hausdorff_data.py) and its
+    toy loop need directly (raw_to_mu01 consumes raw moments, not central ones)."""
+    ctx = build_curve_context(mx2, el, q2)
+    return compute_raw_curves_from_context(ctx, w, el_cuts, q2_cuts)

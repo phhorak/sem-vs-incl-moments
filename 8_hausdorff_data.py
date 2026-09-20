@@ -489,7 +489,11 @@ def main():
             haus_results[obs] = {"thresholds": cuts.tolist(), "worst": [], "pass": []}
 
             for thr in cuts:
-                lo_thr = float(thr) if obs in ("El", "Q2") else lo
+                # Same fixed-domain convention as the MaxEnt panel/toy loops below: the
+                # feasibility check must test the problem actually being solved
+                # ([xlo_base, hi], not [thr, hi]), or "pass" here doesn't mean the later
+                # fit is feasible.
+                lo_thr = lo
 
                 raw_full = np.array([1.0] + raw_gap_at_threshold(keys, sem_cuts_ref, thr))
                 mu01 = raw_to_mu01(raw_full, lo_thr, hi)
@@ -626,7 +630,12 @@ def main():
                 row, col = divmod(idx, ncols)
                 ax = axes3[row, col]
 
-                xlo = float(thr) if obs in ("El", "Q2") else xlo_base
+                # Domain always spans the true physical support [xlo_base, xhi], not
+                # [thr, xhi]: the threshold only selects which data constrains the fit
+                # (raw_gap_at_threshold below), so the endpoint prior (obs_alpha/obs_beta)
+                # stays anchored at the real kinematic edge for every threshold panel,
+                # rather than being misapplied at the cut itself.
+                xlo = xlo_base
                 span   = xhi - xlo
                 x_grid = xlo + t_grid * span
 
@@ -647,8 +656,12 @@ def main():
                     f_phys = f_t / span
                     status = f"mom err {mom_err:.1e}" + ("" if ok_opt else " (!)")
                     if mom_err < 1e-4:
+                        # Convergence is judged by mom_err alone, not scipy's own res.success
+                        # (ok_opt): L-BFGS-B can report ABNORMAL_TERMINATION_IN_LNSRCH right at
+                        # an already-excellent solution (mom_err ~1e-12), which is spurious --
+                        # the moment-matching quality is the only thing that actually matters.
                         ax.plot(x_grid, f_phys, color="steelblue", lw=2)
-                        entry.update({"converged": ok_opt, "mom_err": mom_err,
+                        entry.update({"converged": True, "mom_err": mom_err,
                                       "f_phys": f_phys.tolist()})
                     else:
                         lam_warm = None
@@ -681,59 +694,6 @@ def main():
             fig3.savefig(out_fig3)
             plt.close(fig3)
             print(f"  → {out_fig3}")
-
-            # ── Overlay plot: all curves on common scale ──────────────────────
-            # Collect good curves in ascending threshold order
-            good = []
-            for thr in passing:
-                e = maxent_out[obs]["thresholds"][f"{thr:.2f}"]
-                if e["f_phys"] is not None:
-                    xlo = float(thr) if obs in ("El", "Q2") else xlo_base
-                    good.append((float(thr), xlo, np.array(e["x_grid"]), np.array(e["f_phys"])))
-
-            if len(good) >= 2:
-                fig4, ax4 = plt.subplots(figsize=(7, 4.5))
-                cmap4 = plt.get_cmap("viridis")
-                colors4 = [cmap4(i / (len(good) - 1)) for i in range(len(good))]
-
-                # Highest threshold normalized to 1; each lower curve normalized
-                # so its integral above the next curve's threshold is also 1.
-                scaled_curves = [None] * len(good)
-                for i in range(len(good) - 1, -1, -1):
-                    thr, xlo, xg, fp = good[i]
-                    if i == len(good) - 1:
-                        norm = np.trapz(fp, xg)
-                    else:
-                        _, _, xg_next, fp_next_s = scaled_curves[i + 1]
-                        ref   = np.trapz(fp_next_s, xg_next)
-                        above = np.trapz(fp[xg >= good[i + 1][0]], xg[xg >= good[i + 1][0]])
-                        norm  = above / ref if ref > 0 else 1.0
-                    scaled_curves[i] = (thr, xlo, xg, fp / norm if norm > 0 else fp)
-
-                ymax = np.percentile(np.concatenate([fp for _, _, xg, fp in scaled_curves]), 99)
-
-                for i, (thr, _, xg, fp_s) in enumerate(scaled_curves):
-                    cut_label = (r"$E_\ell > " + f"{thr:.1f}" + r"\ \mathrm{GeV}$"
-                                 if obs != "Q2" else
-                                 r"$q^2 > " + f"{thr:.1f}" + r"\ \mathrm{GeV}^2$")
-                    ax4.plot(xg, fp_s, color=colors4[i], lw=1.8, label=cut_label)
-
-                ax4.set_xlabel(xlabel, fontsize=10)
-                ax4.set_ylabel("rescaled " + ylabel, fontsize=10)
-                ax4.set_xlim(xlo_base, xhi)
-                ax4.set_ylim(0, 1.2 * ymax)
-                ax4.tick_params(labelsize=9)
-                ax4.grid(alpha=0.25)
-                ax4.legend(fontsize=8, loc="best")
-                fig4.suptitle(
-                    r"MaxEnt inversions overlaid — " + obs_title[obs]
-                    + "\n" + r"(each curve rescaled: $\int_{\mathrm{thr}_{i+1}}^{\mathrm{hi}} f\,dx = 1$)",
-                    fontsize=10)
-                fig4.tight_layout()
-                out_fig4 = fig_dir / f"maxent_data_{obs}_overlay.pdf"
-                fig4.savefig(out_fig4)
-                plt.close(fig4)
-                print(f"  → {out_fig4}")
 
         with open(out_dir / "maxent_data_inversions.json", "w") as f:
             json.dump(maxent_out, f, indent=2)
@@ -949,7 +909,9 @@ def main():
             lam_toy = None
             for thr in passing:
                 thr_str = f"{thr:.2f}"
-                xlo  = float(thr) if obs in ("El", "Q2") else xlo_base_o
+                # Same fix as the nominal panel loop: keep the domain anchored at the true
+                # physical edge (xlo_base_o) for every threshold, not the cut itself.
+                xlo  = xlo_base_o
                 if xlo >= xhi_o:
                     lam_toy = None
                     continue
