@@ -19,6 +19,6 @@ Decay D_2*+
 0.6063  D0   pi+  TSS;
 0.3937  D*0  pi+  TVS_PWAVE  0.0 0.0 1.0 0.0 0.0 0.0;
 Enddecay
-CDecay anti-D_2*+
+CDecay D_2*-
 
 End

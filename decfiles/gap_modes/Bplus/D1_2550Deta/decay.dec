@@ -1,0 +1,30 @@
+# Descriptor: [B- -> anti-D(2S)0 l- nu, anti-D(2S)0 -> anti-D0 eta] gap mode (resonant)
+# NickName: Bu_D1_2550lnu_Deta_gapmodes
+# Documentation: Gap mode; D_1(2550) [= D(2S)0 in EvtGen, PDG 100421, m=2564 MeV, w=135 MeV]
+#   -> D0 eta contribution to semileptonic gap (arXiv:2605.03021).
+#   ISGW2 for B -> D(2S) l nu (model available in DECAY_BELLE2.DEC for this state).
+#   PHSP for D(2S) -> D eta sub-decay.
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260519
+
+Alias D1_2550sig anti-D(2S)0
+Alias anti-D1_2550sig D(2S)0
+ChargeConj D1_2550sig anti-D1_2550sig
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 D1_2550sig  e-  anti-nu_e  PHOTOS ISGW2;
+0.500 D1_2550sig  mu- anti-nu_mu PHOTOS ISGW2;
+Enddecay
+CDecay B+sig
+
+Decay D1_2550sig
+1.0   anti-D0  eta   PHSP;
+Enddecay
+CDecay anti-D1_2550sig
+
+End

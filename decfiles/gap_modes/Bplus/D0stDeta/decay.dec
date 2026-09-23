@@ -1,0 +1,29 @@
+# Descriptor: [B- -> anti-D_0*0 l- nu, anti-D_0*0 -> anti-D0 eta] gap mode (resonant S-wave)
+# NickName: Bu_D0stlnu_Deta_gapmodes
+# Documentation: Gap mode; D_0*(2300) -> D0 eta, S-wave component from coupled-channel fit
+#   (arXiv:2605.03021, Eq. 38: BF(B+->D0eta lnu) ~ 0.56e-4).
+#   LLSW for B -> D_0* l nu; PHSP for scalar -> pseudoscalar + pseudoscalar sub-decay.
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260519
+
+Alias D0steta0sig anti-D_0*0
+Alias anti-D0steta0sig D_0*0
+ChargeConj D0steta0sig anti-D0steta0sig
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 D0steta0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 D0steta0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B+sig
+
+Decay D0steta0sig
+1.0   anti-D0  eta   PHSP;
+Enddecay
+CDecay anti-D0steta0sig
+
+End

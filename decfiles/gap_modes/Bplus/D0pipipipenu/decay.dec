@@ -1,0 +1,38 @@
+# Descriptor: [B- -> anti-D_10 l- nu, anti-D_10 -> anti-D0 pi+ pi- pi0] gap mode
+# NickName: Bu_D1lnu_D0pipipi_gapmodes
+# Documentation: Gap mode; three-pion contribution to semileptonic gap via D_1(2420).
+#   Paper (arXiv:2605.03021) attributes up to 1/4 of the DXlnu gap to three-pion modes,
+#   primarily D_1*(2760)->D_1(2420)pi and D_2(2800)->D_2*(2460)pi sequential decays.
+#   Neither 2760 nor 2800 exist in evt.pdl; we use D_1(2420) as the intermediate state
+#   with LLSW for B -> D_1 l nu and PHSP for D_1 -> D pi pi pi (3-body approximation).
+#   The D_1 -> D pipi modes are in DECAY_BELLE2.DEC; the extra pi comes from the
+#   unmeasured higher sequential decay. This is a rough placeholder.
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260519
+
+Alias D1pipipisig anti-D_10
+Alias anti-D1pipipisig D_10
+ChargeConj D1pipipisig anti-D1pipipisig
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 D1pipipisig  e-  anti-nu_e  PHOTOS LLSW 0.71 -1.6 -0.5 2.9;
+0.500 D1pipipisig  mu- anti-nu_mu PHOTOS LLSW 0.71 -1.6 -0.5 2.9;
+Enddecay
+CDecay B+sig
+
+SetLineshapePW D1pipipisig anti-D*0 pi0 2
+SetLineshapePW D1pipipisig D*- pi+ 2
+SetLineshapePW anti-D1pipipisig D*0 pi0 2
+SetLineshapePW anti-D1pipipisig D*+ pi- 2
+
+Decay D1pipipisig
+1.0   anti-D0  pi+  pi-  pi0   PHSP;
+Enddecay
+CDecay anti-D1pipipisig
+
+End

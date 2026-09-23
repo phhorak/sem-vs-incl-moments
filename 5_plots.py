@@ -25,8 +25,7 @@ import tempfile
 import time
 from pathlib import Path
 
-# Avoid thread-spawn failures on constrained batch/login nodes (mirrors
-# 8_hausdorff_data.py) when loading many cocktail/gap-mode parquets at once.
+# Avoid thread-spawn failures on constrained batch/login nodes when loading many parquets at once.
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")

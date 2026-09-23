@@ -1,5 +1,9 @@
+# data and generated outputs (output/ is a symlink to the data filesystem)
+output
 *.root
 *.parquet
-__pycache__/
 logs/
+# local work area; the few tracked files in it stay tracked
+scratch/
+__pycache__/
 *.pyc

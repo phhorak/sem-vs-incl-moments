@@ -1,0 +1,18 @@
+noPhotos
+
+# anti-B0 -> D_s+ anti-K0 e- nu (PHSP), isospin partner of Bplus/DsKenu (B+ -> D_s- K+ e+ nu):
+# spectator d-bar -> anti-K0 instead of B+'s spectator u-bar -> K+ (see
+# decfiles/gap_modes/B0/DsKenu/decay.dec for the referenced isospin derivation,
+# arXiv:2605.03021 Eqs. 5-8). BR fixed to 0 in this cocktail component (see config.yaml) --
+# included for categorization/gap-accounting completeness, not as an SM contribution.
+
+Decay Upsilon(4S)
+1.0  B0sig  anti-B0sig  VSS_BMIX dm;
+Enddecay
+
+Decay anti-B0sig
+1.0  D_s+   anti-K0  e-  anti-nu_e   PHSP;
+Enddecay
+CDecay B0sig
+
+End

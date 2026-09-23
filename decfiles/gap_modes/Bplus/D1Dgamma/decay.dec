@@ -1,0 +1,34 @@
+# Descriptor: [B- -> D_10 l- nu, D_10 -> D0 gamma] gap mode (radiative)
+# NickName: Bu_D1lnu_Dgamma_gapmodes
+# Documentation: Gap mode; D_1(2420) -> D0 gamma radiative decay (not in DECAY_BELLE2.DEC).
+#   BF(D_1 -> D gamma) predicted ~10% by quark model (Ref. arXiv:2605.03021).
+#   Uses LLSW form factors, VSP_PWAVE for radiative sub-decay.
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260519
+
+Alias D1gamma0sig D_10
+Alias anti-D1gamma0sig anti-D_10
+ChargeConj D1gamma0sig anti-D1gamma0sig
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 D1gamma0sig  e-  anti-nu_e  PHOTOS LLSW 0.71 -1.6 -0.5 2.9;
+0.500 D1gamma0sig  mu- anti-nu_mu PHOTOS LLSW 0.71 -1.6 -0.5 2.9;
+Enddecay
+CDecay B+sig
+
+SetLineshapePW D1gamma0sig D*0 pi0 2
+SetLineshapePW D1gamma0sig D*+ pi- 2
+SetLineshapePW anti-D1gamma0sig anti-D*0 pi0 2
+SetLineshapePW anti-D1gamma0sig D*- pi+ 2
+
+Decay D1gamma0sig
+1.0   D0  gamma   VSP_PWAVE;
+Enddecay
+CDecay anti-D1gamma0sig
+
+End

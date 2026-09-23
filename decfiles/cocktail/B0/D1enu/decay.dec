@@ -16,6 +16,6 @@ SetLineshapePW D_1+ D*0 pi+ 2
 Decay D_1+
 1.0  D*0  pi+   VVS_PWAVE  0.0 0.0 0.0 0.0 1.0 0.0;
 Enddecay
-CDecay anti-D_1+
+CDecay D_1-
 
 End

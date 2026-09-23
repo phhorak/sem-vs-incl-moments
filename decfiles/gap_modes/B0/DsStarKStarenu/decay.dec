@@ -1,0 +1,39 @@
+# Descriptor: [anti-B0 -> X(D_s* K*) l- nu] dummy-resonant gap mode, e and mu, cc
+# NickName: B0_DsStarKStarlnu_dummyres_gapmodes
+# Documentation: B0 -> D_s* K* l nu via wide dummy resonance (m=2.8 GeV, w=3.0 GeV), isospin
+#   partner of decfiles/gap_modes/Bplus/DsStarKStarenu, following the same B+/B0 particle
+#   assignment as decfiles/gap_modes/B0/DsKenu (spectator d-bar -> anti-K*0).
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260903
+#
+# Uses plain VSS (not VSS_BMIX) for the Upsilon(4S) decay: VSS_BMIX + the D_s*/K* daughter
+# combination segfaults EvtGen (crashes ~30 events in, same failure for both the D_s* and the
+# K* substitution alone -- likely an edge case in the mixing amplitude near the raised
+# threshold mass). Mixing only assigns flavor-tagging/CP info, not decay-daughter kinematics,
+# so this is fine for a kinematic line-shape comparison (Mx/El_B/q2), just not a
+# flavor-tagged physics sample.
+
+Alias DsK0sig D_0*+
+Alias anti-DsK0sig D_0*-
+ChargeConj DsK0sig anti-DsK0sig
+
+Particle DsK0sig      2.8 3.0
+Particle anti-DsK0sig 2.8 3.0
+
+Decay Upsilon(4S)
+1.0 B0sig anti-B0sig  VSS;
+Enddecay
+
+Decay anti-B0sig
+0.500 DsK0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 DsK0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B0sig
+
+Decay DsK0sig
+1.0 D_s*+ anti-K*0 PHSP;
+Enddecay
+CDecay anti-DsK0sig
+
+End

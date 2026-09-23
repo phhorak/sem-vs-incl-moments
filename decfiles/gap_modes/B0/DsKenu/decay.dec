@@ -1,0 +1,37 @@
+# Descriptor: [anti-B0 -> X(D_s K) l- nu] dummy-resonant gap mode, e and mu, cc
+# NickName: B0_DsKlnu_dummyres_gapmodes
+# Documentation: B0 -> D_s K l nu via wide dummy resonance (m=2.8 GeV, w=3.0 GeV), isospin
+#   partner of decfiles/gap_modes/Bplus/DsKenu (B+ -> D_s- K+ l+ nu). Confirmed nonzero per
+#   arXiv:2605.03021 (Eqs. 5-8): the paper derives B(B0 -> Ds(*)-K0 l+ nu) = (5.63+-0.88)e-4
+#   from the measured B(B+ -> Ds(*)-K+ l+ nu) = (6.06+-0.95)e-4 via isospin symmetry and the
+#   B+/B0 lifetime ratio -- not a direct measurement, but the paper's own charge-conjugate
+#   notation "B0 -> Ds- K0 l+ nu" is exactly the CDecay conjugate of anti-B0 -> Ds+ anti-K0 l- nu
+#   used here, confirming this particle assignment (spectator d-bar -> anti-K0 instead of B+'s
+#   spectator u-bar -> K+). Confirmed with the analysis author (2026-08-31).
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260831
+
+Alias DsK0sig D_0*+
+Alias anti-DsK0sig D_0*-
+ChargeConj DsK0sig anti-DsK0sig
+
+Particle DsK0sig      2.8 3.0
+Particle anti-DsK0sig 2.8 3.0
+
+Decay Upsilon(4S)
+1.0 B0sig anti-B0sig  VSS_BMIX dm;
+Enddecay
+
+Decay anti-B0sig
+0.500 DsK0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 DsK0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B0sig
+
+Decay DsK0sig
+1.0 D_s+ anti-K0 PHSP;
+Enddecay
+CDecay anti-DsK0sig
+
+End

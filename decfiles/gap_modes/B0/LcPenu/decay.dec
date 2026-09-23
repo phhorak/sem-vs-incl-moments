@@ -1,0 +1,40 @@
+# Descriptor: [anti-B0 -> X(Lambda_c nbar) l- nu] dummy-resonant gap mode, e and mu, cc
+# NickName: B0_LcNlnu_dummyres_gapmodes
+# Documentation: B0 -> Lambda_c anti-n l nu via wide dummy resonance (m=3.8 GeV, w=3.0 GeV),
+#   isospin partner of decfiles/gap_modes/Bplus/LcPenu (B+ -> Lambda_c pbar l nu). Standard
+#   literature pairing for this baryonic semileptonic channel: the spectator antiquark that ends
+#   up in the light (anti)baryon is u-bar for B+ (giving pbar = u-bar u-bar d-bar) and d-bar for
+#   B0 (giving nbar = u-bar d-bar d-bar), with the same Lambda_c+ on the charm side either way.
+#   Confirmed with the analysis author (2026-08-31).
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260831
+
+Alias LcN0sig D_0*+
+Alias anti-LcN0sig D_0*-
+ChargeConj LcN0sig anti-LcN0sig
+
+Particle LcN0sig      3.8 3.0
+Particle anti-LcN0sig 3.8 3.0
+
+Decay Upsilon(4S)
+1.0 B0sig anti-B0sig  VSS_BMIX dm;
+Enddecay
+
+Decay anti-B0sig
+0.500 LcN0sig  e-  anti-nu_e  PHOTOS LLSW 0.68 -0.2 0.3;
+0.500 LcN0sig  mu- anti-nu_mu PHOTOS LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B0sig
+
+Decay LcN0sig
+1.0 Lambda_c+ anti-n0 PHSP;
+Enddecay
+CDecay anti-LcN0sig
+
+Decay Lambda_c+
+1.00  p+  K-  pi+  PHSP;
+Enddecay
+CDecay anti-Lambda_c-
+
+End

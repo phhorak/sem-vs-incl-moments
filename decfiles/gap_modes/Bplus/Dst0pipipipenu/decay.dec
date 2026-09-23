@@ -1,0 +1,30 @@
+# Descriptor: [B- -> anti-D_2*0 l- nu, anti-D_2*0 -> anti-D*0 pi+ pi- pi0] gap mode
+# NickName: Bu_D2stlnu_Dst0pipipi_gapmodes
+# Documentation: Gap mode; three-pion contribution to semileptonic gap via D_2*(2460).
+#   Companion to D0pipipipenu; covers the D* pi pi pi final state from D_2*(2460) as
+#   intermediate (proxy for D_2(2800)->D_2*(2460)pi sequential decay).
+#   LLSW for B -> D_2* l nu; PHSP for D_2* -> D* pi pi pi sub-decay.
+# Responsible: Philipp Horak
+# Email: phorak@uvic.ca
+# Date: 20260519
+
+Alias D2stpipipisig anti-D_2*0
+Alias anti-D2stpipipisig D_2*0
+ChargeConj D2stpipipisig anti-D2stpipipisig
+
+Decay Upsilon(4S)
+1.0 B-sig B+sig  VSS;
+Enddecay
+
+Decay B-sig
+0.500 D2stpipipisig  e-  anti-nu_e  PHOTOS LLSW 0.71 -1.6 -0.5 2.9;
+0.500 D2stpipipisig  mu- anti-nu_mu PHOTOS LLSW 0.71 -1.6 -0.5 2.9;
+Enddecay
+CDecay B+sig
+
+Decay D2stpipipisig
+1.0   anti-D*0  pi+  pi-  pi0   PHSP;
+Enddecay
+CDecay anti-D2stpipipisig
+
+End

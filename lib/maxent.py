@@ -1,8 +1,5 @@
-"""Shared Hausdorff-feasibility check + MaxEnt inversion on [0,1] (steps 6 and 7).
-
-Replaces the four diverging copies that lived in the retired 6_joint_fit / 6b_kolya_vs_joint /
-7_hausdorff_toy / 8_hausdorff_data scripts. The algorithm (L-BFGS-B on the convex dual, same
-options) is unchanged from the one behind figures/7/maxent_convergence_El_overlay_2x2.pdf.
+"""Hausdorff-feasibility check and MaxEnt inversion on [0,1], shared by steps 6 and 7.
+The MaxEnt density is found by L-BFGS-B on the convex dual.
 
 Conventions:
   * Moment arrays include m_0 = 1: using moments up to order N means mu01[:N + 1].

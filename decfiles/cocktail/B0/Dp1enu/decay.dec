@@ -14,6 +14,6 @@ CDecay B0sig
 Decay D'_1+
 1.0  D*0  pi+   VVS_PWAVE  1.0 0.0 0.0 0.0 0.0 0.0;
 Enddecay
-CDecay anti-D'_1+
+CDecay D'_1-
 
 End
