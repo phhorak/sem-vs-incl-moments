@@ -12,7 +12,7 @@ generation:
   queue: s
   batch_output_dir: /ghi/fs01/belle2/bdata/users/phorak/sigmc/evtgen
   cocktail_modes:
-    # B+, electron (original simplification)
+    # B+, electron
     - Bplus/Dstenu
     - Bplus/Denu
     - Bplus/D1enu
@@ -33,7 +33,7 @@ generation:
     - Bplus/DsKenu
     - Bplus/D0etaenu
     - Bplus/Dst0etaenu
-    # B+, muon (full lepton-flavor generalization)
+    # B+, muon
     - Bplus/Dstmunu
     - Bplus/Dmunu
     - Bplus/D1munu
@@ -54,7 +54,7 @@ generation:
     - Bplus/DsKmunu
     - Bplus/D0etamunu
     - Bplus/Dst0etamunu
-    # B0, electron (full isospin generalization)
+    # B0, electron
     - B0/Dstenu
     - B0/Denu
     - B0/D1enu
@@ -75,7 +75,7 @@ generation:
     - B0/DsKenu
     - B0/Detaenu
     - B0/Dstetaenu
-    # B0, muon (full isospin + lepton-flavor generalization)
+    # B0, muon
     - B0/Dstmunu
     - B0/Dmunu
     - B0/D1munu
@@ -126,15 +126,11 @@ reweight:
   lcp_mass_max: 4.6
   lcp_nbins: 40
   lcp_max_ratio: 10.0
-  # One job per cocktail ROOT file (76 total) -- bundling multiple files per job
-  # exceeds the queue's 4GB memory limit (OOM, exit 137).
+  # one job per cocktail ROOT file; more files per job exceed the 4 GB slot
   cocktail_n_jobs: 76
 
 average:
-  method: polynomial        # "gls": one free parameter per (key, cut) truth point.
-                             # "polynomial": joint per-key polynomial basis, so the averaged
-                             # curve is smooth in the cut variable. Both solve one joint GLS
-                             # against the full cross-experiment/cross-moment covariance.
+  method: polynomial        # "gls": free value per (key, cut); "polynomial": smooth in the cut
   poly_degree: {mx: 4, el: 4, q2: 5}  # per family (int = same for all). q2 is Belle II only: chi2 82/30 at deg 4, 21/27 at deg 5
   corr_same_exp_same_var: 0.5
   corr_same_exp_diff_var: 0.2
@@ -145,11 +141,8 @@ average:
     #- delphi
     #- cleo
     #- cdf
-  # Drops only the named family's measurements for that experiment (other
-  # families untouched) -- see the comment at its use site in 4_average.py for
-  # why Belle's q2 specifically is dropped here (persistent ~1sigma-per-point,
-  # highly-correlated offset vs Belle II that their real cross-correlation
-  # doesn't fully explain; chi2/dof 999.0/141 -> 110.4/96, p 0.000 -> 0.150).
+  # Belle q2 is offset from Belle II by ~1 sigma per point, beyond their measured correlation
+  # (chi2/dof 999/141 with both, 110/96 without).
   exclude_family_experiments:
     q2: [belle]
 
@@ -167,132 +160,47 @@ plots:
   weight_col: total_weight
 
 
-fit:
-  mode: both      # "simultaneous", "individual", "unconstrained", or "both"
-  include_cocktail_dsk: true  # if false, zero the Ds(*)K component in the SM cocktail in step 6
-  gap_modes:              # gap modes to include; subset of generation.gap_modes
-    - D2stDeta
-    - DummyDeta
-    - Dp1DstEta
-    - Dp1Deta
-    - DsKenu
-    - LcPenu
-    - D0stDeta
-    - D1_2550Deta
-    - D1Dgamma
-    - D0pipipipenu
-    - Dst0pipipipenu
-  el_cut_min: 0.0
-  mx_upper_cut: null      # optional event-level cut in step 6: keep only events with M_X < this value, or put "null"
-  n_br_nuisance: 15
-  n_ff_nuisance: 50
-  theta_br_bound: 10.0
-  theta_ff_bound: 10.0
-  delta_chi2: 2.71        # 95% CL threshold for profile likelihood scan
-  mu_total_scan_max: 1.2  # mu=1 now means BR_REF (see below): "one mode explains the whole gap"
-  n_scan: 200
-  # BR_REF is derived by 6_fit.py from compute_bf_gap() (not a fixed constant), so mu=1
-  # always means "the full measured inclusive-minus-exclusive gap".
-  mcmc_n_burn: 500
-  mcmc_n_steps: 3000
-  mcmc_n_walkers: null    # null = auto (max(128, 4*ndim))
-
-hausdorff_data:
-  grid_size: 100
-  mx_support: [3.2, 16.0]   # Mx² [GeV²]: from support scan
-  el_support: [0.0, 2.3]
-  q2_support: [0.0, 12.5]
-  # Mirrors hausdorff_toy.boundary_alpha/beta below (sec:idea+approach derivation).
-  boundary_alpha:      # exponent at t=0: f(t) ~ t^alpha as t->0 (0=no constraint)
-    mx2: 2
-    el: 2
-    q2: 0
-  boundary_beta:       # exponent at t=1: f(t) ~ (1-t)^beta as t->1 (0=no constraint)
-    mx2: 0
-    el: 3.5
-    q2: 1.5
-  max_el_cut: 1.5      # exclude El (and Mx) thresholds >= this value
-  max_q2_cut: 7.0      # exclude Q2 thresholds >= this value
-
-hausdorff_toy:
-  gap_mode: D2stDeta
-  # n_toys/n_toys_band/n_toy_chunks temporarily lowered (full-precision values: 1140/5000/500)
-  # for faster turnaround; restore once validated.
-  n_toys: 1500
-  n_moments: [2, 3, 4, 5]
+# ── Steps 5-7: residual moments, toys, MaxEnt ───────────────────────────────
+maxent:
   grid_size: 2000
-  n_toys_band: 1000
-  n_toy_chunks: 60
-  bounds_sigma: 0.0
-  incl_sigma: 0.0
-  el_cuts: [0.0, 0.6, 1.0]
-  q2_cuts: [1.5, 3.0, 6.0]
-  mx_support: [5.82, 25.60]   # Mx² [GeV²]: actual D2stDeta MC truth endpoints (x0.999/x1.001 margin)
-  el_support: [0.0, 2.06]     # actual D2stDeta MC truth endpoints
-  q2_support: [0.0, 8.00]     # actual D2stDeta MC truth endpoints
-  # Endpoint-power priors g(t) ~ t^alpha (1-t)^beta from sec:idea+approach.
-  # Lower edges: El sits at the physical E_l -> 0 threshold where massless-lepton counting
-  # gives rho(E_l) ~ E_l^2 (alpha=2, mode-independent). Q2 also sits at its physical q^2 -> 0
-  # threshold, but there rho(q^2) approaches a finite non-zero value, so no suppression is
-  # imposed (alpha=0). Mx2's lower edge has no derived exponent (alpha=0).
-  # Upper edges: applied here as a diagnostic despite this mode's own kinematic maximum sitting
-  # well short of the global (Mx=MD) edge where these powers were derived (eps_El ~ 0.25 GeV,
-  # ~11%; eps_Q2 ~ 3.7 GeV^2, ~31% below) -- see the "_unconstrained" companion figures.
-  # beta_El = 3+a with the minimal continuum power a=1/2 -> 3.5; beta_Q2 = 3/2; beta_Mx2 = 0
-  # (no global-edge analogue applies to this mode's own Mx2 support).
-  boundary_alpha:
-    mx2: 2
-    el: 2
-    q2: 0
-  boundary_beta:
-    mx2: 0
-    el: 3.5
-    q2: 1.5
-  seed: 42
-  # "all_soft": extra run-label using a Gaussian-relaxed per-threshold MaxEnt dual, so a toy
-  # whose noisy moments fall outside the achievable polytope degrades instead of failing outright.
-  soft_all_enable: true
-  # Extra Asimov-convergence figure set (7_hausdorff_toy.py, figures/7/alt_gap_<tag>/) for a MIXED gap truth instead of `gap_mode`. Each component's gap
-  # fraction is split evenly over its B0/B+ species (isospin mix); `decays` are taken from the SEM cocktail, `gap_mode` from output/3/<gap_mode>.parquet.
-  # Delete the block to skip. smoothing_sigma: Gaussian kernel of the drawn truth curves [GeV, GeV, GeV^2].
-  alt_gap:
-    tag: Dlnu_LcPenu
-    components:
-      - {legend: '$D\ell\nu$', fraction: 0.5, decays: [B0_Denu, Bp_Denu]}
-      - {legend: '$\Lambda_c\bar p\,\ell\nu$', fraction: 0.5, gap_mode: LcPenu}
-    smoothing_sigma: {mx: 0.03, el: 0.08, q2: 0.40}
+  mom_tol: 1.0e-6          # converged <=> max_k |m_k(f) - m_k| < mom_tol
+  n_moments: [1, 2, 3, 4]  # N = highest moment order used, m_1..m_N (m_0 = 1 always)
+  n_moments_extended: [1, 2, 3, 4, 5, 6]   # extra step-6 figure set (total band only)
+  # Endpoint priors f(t) ~ t^alpha (1-t)^beta (draft, sec. idea+approach).
+  # Mx2 lower edge: no statement possible; El: E_l^2 at 0, eps^(3+a) with a=1/2 at the top;
+  # q2: finite at 0, eps^(3/2) at the top.
+  alpha: {mx2: 0, el: 2, q2: 0}
+  beta:  {mx2: 0, el: 3.5, q2: 1.5}
+
+toys:
+  n_toys: 2000
+  n_chunks: 40
+  seed: 1
 
 systematics:
-  enable:
-    incl_moments: true
-    ff: true
-    bf_mode: true
-    bf_gap: false        # contributes ~0% (cancels exactly, see SYSTEMATICS_NOTES); off for now
-  run_combined: true
-  # bf_incl must sum the same four bookkeeping terms as bf_sem_computed (lib/systematics.py):
-  # bf_incl = 2*B(B+->Xc l nu) + 2*B(B0->Xc l nu) = 2*11.05% + 2*10.27% = 42.64%
-  # (B+e, B+mu, B0e, B0mu; LFU-assumed e/mu equal). Using a single physical inclusive BR here
-  # instead breaks compute_bf_gap() (bf_gap goes negative).
-  # bf_incl_unc = sqrt((2*0.16%)^2 + (2*0.15%)^2) = 0.44% -- e/mu pairs are 100% correlated
-  # (linear), B+/B0 are independent measurements (quadrature).
-  # Source: HFLAV 2023 (arXiv:2411.18639), same reference as _BF_TABLE in 3_reweight.py.
+  # 2*B(B+ -> Xc l nu) + 2*B(B0 -> Xc l nu): a bookkeeping sum over the four cocktail species
+  # (B+/B0 x e/mu), not a branching fraction. Only ratios such as B_gap/B_incl enter.
+  # HFLAV 2023 (arXiv:2411.18639).
   bf_incl: 0.4264
-  bf_incl_unc: 0.0044
+  # Gap uncertainty per species and lepton (draft Table 1). Applied fully correlated, see
+  # lib/systematics.bf_gap_sigma.
+  n_leptons: 2
+  bf_gap_unc: {Bp: 0.0028, B0: 0.0026}
 
-# Joint multi-threshold MaxEnt (lib/joint_maxent.py): fits all thresholds' moments together
-# on one global density, replacing legacy per-threshold MaxEnt + stitching. Opt-in; legacy path
-# still runs when disabled. El/Q2 only (Mx keeps single-best-threshold).
-joint_maxent:
-  enable: false
-  observables: [El]    # Q2 continuity penalty not yet usable on data (see known limitations doc)
-  sigma_rel: 0.03
-  gamma_value: 30.0    # continuity weights for 7_hausdorff_toy.py's formulation
-  gamma_slope: 30.0
-  gammas_conditional:  # 8_hausdorff_data.py's formulation: 0 performs best against real toy noise
-    El: [0.0, 0.0]
-    Q2: [0.0, 0.0]
-  n_moments:
-    El: 5              # 8_/data capped at N<=4 (only 3 raw moments tabulated experimentally)
-    Q2: 3              # N=5 unstable for this steeply-falling spectrum
-  el_cuts: [0.0, 0.4, 0.8, 1.2, 1.6]
-  q2_cuts: [0.5, 2.0, 3.5, 5.0, 6.5]
+asimov:
+  truth_smoothing: {mx: 0.03, el: 0.12, q2: 0.6}   # Gaussian kernel of the drawn truth [GeV, GeV, GeV^2]
+  scenarios:
+    Dp1DstEta:
+      components:
+        - {legend: '$D_1^\prime\to D^*\eta$', fraction: 1.0, gap_mode: Dp1DstEta}
+    Dlnu_LcPenu:
+      equal_species: true   # each component's B species share its fraction equally
+      components:           # `decays` are taken from the SEM cocktail
+        - {legend: '$D\ell\nu$', fraction: 0.5, decays: [B0_Denu, Bp_Denu]}
+        - {legend: '$\Lambda_c\bar p\,\ell\nu$', fraction: 0.5, gap_mode: LcPenu}
+      mx_display: [1.65, 5.3]
+
+data:
+  # Mx2 upper edge from the support scan; q2 upper edge = (M_B - M_D)^2
+  support: {mx2: [3.2, 16.0], el: [0.0, 2.3], q2: [0.0, 11.7]}
+  joint_fit_q2_lo: 1.5     # lowest measured q2 threshold; no data constrain the fit below it

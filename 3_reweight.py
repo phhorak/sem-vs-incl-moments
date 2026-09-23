@@ -150,10 +150,7 @@ _MCA = {
     "Bp_Dp1munu":      MCAmbulance("bp", "d1p_dstar_pi", "mu"),
     "B0_Dp1enu":       MCAmbulance("b0", "d1p_dstar_pi", "e"),
     "B0_Dp1munu":      MCAmbulance("b0", "d1p_dstar_pi", "mu"),
-    # Gap modes (Section B): keyed by "{decay_name}_{lepton}" since one gdf mixes both lepton
-    # flavors (decay_name itself carries only charge, not lepton, for gap modes -- see
-    # GAP_MODES_PROC). decay_name here is the Bp_/B0_-prefixed value from GAP_MODES_PROC, not
-    # the bare config mode name.
+    # Gap modes: keyed by "{decay_name}_{lepton}", one gdf mixes both lepton flavours.
     "Bp_Dp1DstEta_e":  MCAmbulance("bp", "d1p_dstar_eta", "e"),
     "Bp_Dp1DstEta_mu": MCAmbulance("bp", "d1p_dstar_eta", "mu"),
     "B0_Dp1DstEta_e":  MCAmbulance("b0", "d1p_dstar_eta", "e"),
@@ -217,15 +214,7 @@ PDG_NAME = {
     (521, frozenset([11, 12, 433, 321])):    "Bp_DsstkKenu",
     (521, frozenset([11, 12, 421, 221])):    "Bp_D0etaenu",
     (521, frozenset([11, 12, 423, 221])):    "Bp_Dst0etaenu",
-    # NOTE: the six single-Xc entries below (Denu/Dstenu/D1enu/D0stenu/Dp1enu/D2stenu) and
-    # Dst0pienu/Dstpi0enu were fixed 2026-08-31: the original entries used the NEUTRAL D**
-    # PDG code (e.g. 421=D0, 423=D*0, 10421=D_0*0) where the actual B0/*.dec decfiles decay to
-    # the CHARGED partner (411=D+, 413=D*+, 10411=D_0*+, etc, per `anti-B0sig -> D_0*+ e- ...`)
-    # -- a latent bug invisible until B0 modes were actually generated (they were always
-    # commented out in config.yaml before the full-isospin generalization). Verified against
-    # every B0 decfile's actual daughter list; Dst0pienu/Dstpi0enu instead had the charge/
-    # neutral pairing backwards relative to each other. Bplus entries were cross-checked and
-    # found already correct (0/20 mismatches) -- this bug was specific to the B0 block.
+    # B0 modes decay to the charged D(*,**) partner (411, 413, 10411, ...), per the B0 decfiles.
     (511, frozenset([11, 12, 411])):         "B0_Denu",
     (511, frozenset([11, 12, 413])):         "B0_Dstenu",
     (511, frozenset([11, 12, 10411])):       "B0_D0stenu",
@@ -242,6 +231,8 @@ PDG_NAME = {
     (511, frozenset([11, 12, 413, 211, 0])): "B0_Dstpipipenu",
     (511, frozenset([11, 12, 423, 211, 111])):"B0_Dst0pipipzenu",
     (511, frozenset([11, 12, 413, 111, 0])): "B0_Dstpizpizenu",
+    (511, frozenset([11, 12, 431, 311])):     "B0_DsKenu",
+    (511, frozenset([11, 12, 433, 311])):     "B0_DsstkKenu",
     (511, frozenset([11, 12, 411, 221])):    "B0_Detaenu",
     (511, frozenset([11, 12, 413, 221])):    "B0_Dstetaenu",
     # Muon mirrors (full lepton-flavor generalization; PDG 11/12 -> 13/14, "enu" -> "munu")
@@ -281,6 +272,8 @@ PDG_NAME = {
     (511, frozenset([0, 13, 14, 211, 413])): "B0_Dstpipipmunu",
     (511, frozenset([13, 14, 111, 211, 423])): "B0_Dst0pipipzmunu",
     (511, frozenset([0, 13, 14, 111, 413])): "B0_Dstpizpizmunu",
+    (511, frozenset([13, 14, 431, 311])): "B0_DsKmunu",
+    (511, frozenset([13, 14, 433, 311])): "B0_DsstkKmunu",
     (511, frozenset([13, 14, 221, 411])): "B0_Detamunu",
     (511, frozenset([13, 14, 221, 413])): "B0_Dstetamunu",
 }
@@ -335,16 +328,19 @@ _BF_TABLE = {
     "B0_D0stenu":      (1.2e-3,  0.3e-3),
     "B0_Dp1enu":       (2.6e-3,  0.4e-3),
     "B0_D2stenu":      (3.0e-3,  0.3e-3),
-    "B0_D0pienu":      (1.2e-3 * 2/3, 0.3e-3 * 2/3),
-    "B0_Dpi0enu":      (1.2e-3 / 3,   0.3e-3 / 3),
-    "B0_Dst0pienu":    (2.6e-3 * 2/3, 0.4e-3 * 2/3),
-    "B0_Dstpi0enu":    (2.6e-3 / 3,   0.4e-3 / 3),
+    "B0_D0pienu":      (0.0,     0.0),  # D(*)pi only via D** (as for B+)
+    "B0_Dpi0enu":      (0.0,     0.0),
+    "B0_Dst0pienu":    (0.0,     0.0),
+    "B0_Dstpi0enu":    (0.0,     0.0),
     "B0_Dpipipenu":    (0.7e-3 / 3,   0.8e-3 / 3),
     "B0_D0pipipzenu":  (0.7e-3 / 3,   0.8e-3 / 3),
     "B0_Dpizpizenu":   (0.7e-3 / 3,   0.8e-3 / 3),
     "B0_Dstpipipenu":  (2.0e-3 / 3,   1.0e-3 / 3),
     "B0_Dst0pipipzenu":(2.0e-3 / 3,   1.0e-3 / 3),
     "B0_Dstpizpizenu": (2.0e-3 / 3,   1.0e-3 / 3),
+    "B0_DsKenu":       (0.0,     0.0),  # no B0 -> Ds(*)K contribution assumed in this cocktail
+    "B0_DsstkKenu":    (0.0,     0.0),  # (see decfiles/cocktail/B0/DsKenu/decay.dec) -- included
+                                        # for categorization/gap-accounting completeness only.
     "B0_Detaenu":      (0.0,     0.0),
     "B0_Dstetaenu":    (0.0,     0.0),
 }
@@ -370,7 +366,8 @@ _HAMMER_DECAYS = {
 
 # ── DsK spectrum reweight helper ─────────────────────────────────────────────
 
-_DSK_DECAY_NAMES = {"Bp_DsKenu", "Bp_DsstkKenu", "Bp_DsKmunu", "Bp_DsstkKmunu"}
+_DSK_DECAY_NAMES = {"Bp_DsKenu", "Bp_DsstkKenu", "Bp_DsKmunu", "Bp_DsstkKmunu",
+                     "B0_DsKenu", "B0_DsstkKenu", "B0_DsKmunu", "B0_DsstkKmunu"}
 
 def _load_digitized_curve(csv_path, x_cols=("x",), y_cols=("y_fit",)):
     """Load a digitized (x, y_fit) curve and return a smoothed, sorted (x, y) pair, or None if
@@ -499,12 +496,8 @@ def _pdg_sig(row):
     return (b, frozenset(sig))
 
 
-# Upsilon(4S) -> B+B- / B0-B0bar production fractions (HFLAV). Each decay_name's BF/n_reco
-# weight is already an absolute per-B-meson branching fraction, normalized within its own
-# species; to combine Bp_*/B0_* rows into one Upsilon(4S)-admixture prediction -- matching the
-# charge-untagged experimental moments this cocktail is compared against, see the isospin-
-# generalization plan/memory -- each row must additionally be scaled by its species' physical
-# production fraction, not just concatenated 1:1.
+# Upsilon(4S) -> B+B- / B0B0bar production fractions (HFLAV): scale each species so the
+# combined cocktail matches the charge-untagged measurements.
 F_PLUS = 0.514
 F_ZERO = 0.486
 
@@ -681,10 +674,7 @@ if not args.skip_gap:
             print(f"  [warn] unknown gap mode {mode!r} — skipping")
             continue
 
-        # One (charge, mode) pair per findMCDecay-truth-matched sample; both lepton flavors
-        # come out of the SAME sample (see _generate_and_reco.py's two-pass truth matching),
-        # distinguished at the row level via extraInfo(decayModeID) rather than a separate
-        # config/path axis.
+        # Both lepton flavours come from the same truth-matched sample, split by decayModeID.
         charge_frames = []
         for charge in ("Bplus", "B0"):
             info   = mode_info[charge]

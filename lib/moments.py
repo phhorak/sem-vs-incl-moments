@@ -177,13 +177,8 @@ def df_to_plot_dict(df: pd.DataFrame, moment_type: str) -> dict:
     return result
 
 
-# ── Fast numpy moment computation (presorted suffix-sum) ─────────────────────
-#
-# compute_curves_np() re-sorts by el/q2 and recomputes mx2/el/q2 power arrays on every call,
-# even though only the weight vector changes across repeated calls with the same events (e.g.
-# toy loops). build_curve_context()/compute_curves_from_context() split the fixed (sort order +
-# power arrays, O(N log N)) and weight-dependent (cumsum, O(N)) parts so a toy loop pays the
-# sort cost once instead of once per toy -- ~4-8x faster per call at O(1e7)-row scale.
+# ── Moments above thresholds via suffix sums ─────────────────────────────────
+# The context (sort order + powers, O(N log N)) is built once; each weight vector then costs O(N).
 
 def build_curve_context(mx2: np.ndarray, el: np.ndarray, q2: np.ndarray) -> dict:
     el_order = np.argsort(el)
@@ -265,11 +260,7 @@ def compute_curves_np(
 
 def compute_raw_curves_from_context(ctx: dict, w: np.ndarray, el_cuts: np.ndarray,
                                      q2_cuts: np.ndarray) -> dict[str, np.ndarray]:
-    """Cached-context counterpart to compute_raw_curves_np (mirrors compute_curves_from_context):
-    pass a `ctx` built once via build_curve_context (the O(N log N) sort) and reuse it across many
-    toys that only vary `w` -- turns each toy's cost from O(N log N) back down to O(N), which
-    matters when N is tens of millions of events and the toy loop redoes this thousands of times.
-    """
+    """Raw moments E[X^n | cut] (n=1,2,3) at each El cut (mx, el) and q2 cut (q2)."""
     el_order, el_s, N_el = ctx["el_order"], ctx["el_s"], ctx["N_el"]
     w_el = w[el_order]
     cw    = np.concatenate(([0.], np.cumsum(w_el)))
@@ -325,8 +316,6 @@ def compute_raw_curves_np(
     mx2: np.ndarray, el: np.ndarray, q2: np.ndarray, w: np.ndarray,
     el_cuts: np.ndarray, q2_cuts: np.ndarray,
 ) -> dict[str, np.ndarray]:
-    """Like compute_curves_np, but returns RAW moments E[X^n] (n=1,2,3) above each cut instead
-    of central moments -- what the Hausdorff/MaxEnt data pipeline (8_hausdorff_data.py) and its
-    toy loop need directly (raw_to_mu01 consumes raw moments, not central ones)."""
+    """Raw-moment counterpart of compute_curves_np."""
     ctx = build_curve_context(mx2, el, q2)
     return compute_raw_curves_from_context(ctx, w, el_cuts, q2_cuts)

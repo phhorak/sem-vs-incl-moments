@@ -234,17 +234,8 @@ if exclude_experiments:
     exp_central = _filter_experiments(exp_central, exclude_experiments)
     print(f"  excluded experiments: {sorted(exclude_experiments)}")
 
-# Per-family experiment exclusion: drops only the named family's (mx/el/q2)
-# measurements for that experiment, leaving its other families untouched --
-# unlike exclude_experiments above, which drops an experiment everywhere.
-# Motivated by the real, moderate (rho~0.15-0.3) Belle x Belle II q^2 cross-
-# correlation not being enough to explain their persistent ~1sigma-per-point,
-# highly-correlated offset (raw chi2/dof=999.0/141, p=0.000 with both kept);
-# dropping Belle's own q^2 (keeping Belle II's, and keeping Belle's own Mx/El)
-# gives chi2/dof=110.4/96, p=0.150, with no loss of MaxEnt convergence downstream
-# and no side effects on El's own fit quality -- unlike inflating q^2 errors by
-# hand, which "fixes" the p-value but visibly degrades El's own convergence via
-# the shared joint-fit cross-family weighting.
+# Per-family exclusion (e.g. Belle q2 only), unlike exclude_experiments which drops an
+# experiment everywhere. See config.yaml for why Belle q2 is dropped.
 exclude_family_experiments = {k: {e.lower() for e in v}
                                for k, v in av.get("exclude_family_experiments", {}).items()}
 if exclude_family_experiments:
@@ -294,10 +285,8 @@ def _build_joint_points_and_cov(
                 rho = corr_same_exp_same_var if pi["family"] == pj["family"] else corr_same_exp_diff_var
             else:
                 rho = corr_diff_exp
-            # Keyed by both experiment names now, so a genuine cross-experiment entry
-            # (e.g. the real Belle x Belle II q^2 correlation from their combined
-            # covariance file) can be found and used instead of the flat config default,
-            # without risk of spuriously matching one side's own internal correlation.
+            # Keyed by both experiments so genuine cross-experiment entries (Belle x Belle II q2)
+            # are used without matching one side's internal correlation.
             key_cov = (pi["exp"], pi["key"], _rounded(pi["cut"]), pj["exp"], pj["key"], _rounded(pj["cut"]))
             if key_cov in exp_cov_lookup:
                 rho = float(exp_cov_lookup[key_cov])
@@ -379,13 +368,8 @@ def _poly_average(
     pts, truth_pts, y, s, cov_psd = _build_joint_points_and_cov(exp_dict, label, exp_cov_lookup)
     n, m = len(pts), len(truth_pts)
 
-    # Per-key degree, cut range, and column range within the joint block-diagonal
-    # design matrix. Powers are taken of the cut value rescaled to [-1, 1] per key,
-    # not the raw cut value: raw-domain Vandermonde matrices are badly conditioned
-    # (cond ~1e5 already at degree 4 for a cut range of a few GeV, ~1e16 by degree
-    # 12 -- past the float64 noise floor), and combined with the very large GLS
-    # precision weights from highly-correlated nested-cut points, that numerical
-    # noise gets amplified into spurious chi2 rather than a real shape mismatch.
+    # Powers of the cut rescaled to [-1, 1] per key: raw-cut Vandermonde matrices are badly
+    # conditioned and the GLS weights amplify that noise into spurious chi2.
     keys_present = [k for k in RAW_KEYS if any(p["key"] == k for p in pts)]
     key_deg: dict[str, int] = {}
     key_cols: dict[str, tuple[int, int]] = {}
@@ -461,12 +445,7 @@ def _poly_average(
     return avg, {"chi2": chi2_val, "dof": dof, "pval": pval, "scale": scale}, {
         "points": points,
         "cov": cov_t.tolist(),
-        # cov_t = A_eval @ cov_coeffs @ A_eval.T with cov_coeffs only p_total x p_total,
-        # so cov_t is EXACTLY rank <= p_total regardless of how many output points m it
-        # spans -- everything past the top p_total eigenvalues is float64 roundoff, not
-        # small-but-real information. Consumers must invert against this exact rank
-        # (e.g. a rank-truncated eigendecomposition), not a magnitude-based rcond, or
-        # they will amplify that roundoff into huge spurious precision weights.
+        # cov_t has rank <= p_total exactly; invert it at that rank, not with a magnitude rcond.
         "rank": p_total,
     }, {
         "truth_pts": truth_pts,
@@ -575,12 +554,8 @@ GRID_ROWS = [
     (["q2_1", "q2_2", "q2_3"], r"$q^2_{\mathrm{cut}}\,[\mathrm{GeV}^2]$"),
 ]
 def _plot_average_grid(avg_dict, exp_dict, stats, ylabels, outname, title_prefix, poly_coeffs=None):
-    # Designed for a single-column placement (~3.4in final width): drawn at ~3.5x that size with
-    # fonts scaled up to match, so text lands at ~12pt once LaTeX shrinks the raster back down to
-    # columnwidth -- fonts tuned for a full-width figure* become illegible at this scale. Row/column
-    # titles are placed with fig.text() in figure-fraction coordinates derived from each axes'
-    # actual on-screen position (via get_position(), read out *after* the layout pass), not a fixed
-    # axes-fraction offset -- a fixed offset collides with the tick labels once fonts get this large.
+    # Drawn ~3.5x oversize for single-column placement, fonts scaled to match. Row/column
+    # titles are placed from the axes positions after layout.
     fig, axes = plt.subplots(3, 3, figsize=(15, 13.5), dpi=250)
     added: set[str] = set()
 
@@ -617,11 +592,7 @@ def _plot_average_grid(avg_dict, exp_dict, stats, ylabels, outname, title_prefix
                             ls="", marker=st["marker"], color=st["color"],
                             mec="black", ecolor=st["color"], lw=1.6, ms=7, capsize=2,
                             zorder=20, label=lbl)
-            # Only the leftmost column carries the y-axis label -- the moment order is now
-            # given in-panel (see below) rather than by a separate ylabel per column, so a
-            # bare "n=1/2/3" label would otherwise be redundant across a row. Freeing the
-            # middle/right columns of a rotated label lets wspace shrink, giving each panel
-            # more room.
+            # Only the leftmost column carries the y label; the moment order is given in-panel.
             if c == 0:
                 ax.set_ylabel(ylabels[key], fontsize=30, labelpad=8)
             ax.set_xlabel(xlabel, fontsize=28, labelpad=8)
