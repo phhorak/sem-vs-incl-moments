@@ -19,5 +19,5 @@ predictions at nonzero thresholds, included for cross-checks but not used by the
 
 Context: originally proposed by Markus (2026-09-14/15) as a way to extrapolate to the full
 phase space via the HQE fit and solve the Hausdorff moment problem there, instead of (or in
-addition to) the gap-region SEM-subtraction approach. Used by `7_data_results.py` (HQE inversion)
-and `6_asimov_closure.py` (inclusive-moment systematic of the Asimov closure test).
+addition to) the gap-region SEM-subtraction approach. Used by `8_data_results.py` (HQE inversion)
+and `7_asimov_closure.py` (inclusive-moment systematic of the Asimov closure test).

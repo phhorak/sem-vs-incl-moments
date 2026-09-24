@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Step 6: Asimov closure test of the moment inversion.
+"""Step 7: Asimov closure test of the moment inversion.
 
 Each scenario in config `asimov.scenarios` is a known gap truth, injected into a pseudo-inclusive
 sample (1-f)*cocktail + f*truth with f = B_gap/B_incl, and recovered from the residual moments
 c_true*m_incl - c_sem*m_SEM (Hausdorff check + MaxEnt) using moments m_1..m_N, N in maxent.n_moments.
 
-Bands come from the step-5 toys, recombined per systematic source (each on top of stat):
+Bands come from the step-6 toys, recombined per systematic source (each on top of stat):
   stat          cocktail bootstraps A and B, bootstrap of the gap truth
   ff, bf_mode   SEM-template variations
   incl_moments  HQE-fit toys at threshold 0, as relative shifts of the pseudo-inclusive moments
@@ -13,9 +13,9 @@ Bands come from the step-5 toys, recombined per systematic source (each on top o
   total         all of the above
 
 Usage:
-  python3 6_asimov_closure.py --submit                  # inversion jobs + dependent plot job
-  python3 6_asimov_closure.py --invert SCENARIO SOURCE
-  python3 6_asimov_closure.py --plot
+  python3 7_asimov_closure.py --submit                  # inversion jobs + dependent plot job
+  python3 7_asimov_closure.py --invert SCENARIO SOURCE
+  python3 7_asimov_closure.py --plot
 """
 import argparse
 import json
@@ -44,7 +44,7 @@ HQE_TOYS = HERE / "inputs" / "hqe_likelihood_toys" / "likelihood_toys.h5"
 
 def load(cfg):
     """Step-5 toys and, per toy, HQE-toy relative deviations of the inclusive moments."""
-    T = dict(np.load(Path(cfg["paths"]["output"]) / "5" / "toys.npz"))
+    T = dict(np.load(Path(cfg["paths"]["output"]) / "7" / "toys.npz"))
     dev = hqe_incl_deviations(HQE_TOYS, len(T["z_gap"]), np.random.default_rng([cfg["toys"]["seed"], 6]),
                               MAX_ORDER)
     return T, dev
@@ -112,7 +112,7 @@ def run_invert(cfg, scen, src):
             out[f"nconv_{key}"] = len(f)
             print(f"{scen}/{src} {key}: Hausdorff {haus.mean():.3f}, converged {len(f)}/{len(toys)}",
                   flush=True)
-    od = Path(cfg["paths"]["output"]) / "6"
+    od = Path(cfg["paths"]["output"]) / "7"
     od.mkdir(parents=True, exist_ok=True)
     np.savez(od / f"bands_{scen}_{src}.npz", **out)
 
@@ -189,7 +189,7 @@ class Panels:
                                  f_x=(con.f / (hi - lo), unc.f / (hi - lo)))
             bands = {}
             for src in SOURCES:
-                p = Path(cfg["paths"]["output"]) / "6" / f"bands_{scen}_{src}.npz"
+                p = Path(cfg["paths"]["output"]) / "7" / f"bands_{scen}_{src}.npz"
                 if p.exists():
                     B = np.load(p)
                     bands[src] = {N: dict(pct=B[f"pct_{obs}_N{N}"] * jac, haus=B[f"haus_{obs}_N{N}"],
@@ -285,7 +285,7 @@ def run_plot(cfg):
     import matplotlib.pyplot as plt
 
     T, dev = load(cfg)
-    fig_root = HERE / "figures" / "6"
+    fig_root = HERE / "figures" / "7"
     ck = None
     needs_ck = any("decays" in c for s in cfg["asimov"]["scenarios"].values() for c in s["components"])
     if needs_ck:
@@ -333,9 +333,9 @@ def run_plot(cfg):
         summary[scen] = scenario_summary(P)
         summary[scen]["moment_budget_pct"] = moment_budget(cfg, T, dev, scen)
         write_budget_tex(summary[scen]["moment_budget_pct"],
-                         Path(cfg["paths"]["output"]) / "6" / f"moment_budget_{scen}.tex", BUDGET_LABELS)
+                         Path(cfg["paths"]["output"]) / "7" / f"moment_budget_{scen}.tex", BUDGET_LABELS)
         print(f"  -> {fig_dir}")
-    od = Path(cfg["paths"]["output"]) / "6"
+    od = Path(cfg["paths"]["output"]) / "7"
     json.dump(summary, open(od / "summary.json", "w"), indent=1)
     write_tex(summary, od / "closure_table.tex")
 
@@ -433,10 +433,10 @@ def write_tex(summary, path):
 # ── Submit ───────────────────────────────────────────────────────────────────
 
 def run_submit(cfg, config_path, dry_run, after=None):
-    logs = HERE / "logs" / "6"
+    logs = HERE / "logs" / "7"
     logs.mkdir(parents=True, exist_ok=True)
-    queue, tag = cfg["generation"]["queue"], "s6inv"
-    py = f"cd {HERE} && python3 6_asimov_closure.py --config {config_path}"
+    queue, tag = cfg["generation"]["queue"], "s7inv"
+    py = f"cd {HERE} && python3 7_asimov_closure.py --config {config_path}"
     dep = f' -w "done({after})"' if after else ""
     cmds = [f'bsub -q {queue} -env all -J {tag}_{s}_{src}{dep} -oo {logs}/invert_{s}_{src}.log "{py} --invert {s} {src}"'
             for s in cfg["asimov"]["scenarios"] for src in SOURCES]

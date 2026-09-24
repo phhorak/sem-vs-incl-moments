@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Step 7: gap density from the measured moments.
+"""Step 8: gap density from the measured moments.
 
   Joint fit     El, q2: one density f(t) ~ t^a (1-t)^b exp(sum_k c_k t^k) fit by chi2 to the
-                conditional residual moments at all thresholds, weighted by the step-5 covariance.
+                conditional residual moments at all thresholds, weighted by the step-6 covariance.
   Mx            separate fits per El threshold (Mx moments are El-selected sub-populations).
   HQE           exact Hausdorff + MaxEnt inversion of the HQE-fit moments at threshold 0
                 (Markus Prim's likelihood toys), with and without SEM subtraction.
   Feasibility   Hausdorff check + MaxEnt inversion per threshold (TeX table).
 
-All bands are 68% toy intervals: the step-5 residual toys ("all" source: exp + SEM stat + FF +
-BF-mode + B_gap) refit per toy; for HQE, HQE toys paired with step-5 SEM toys.
+All bands are 68% toy intervals: the step-6 residual toys ("all" source: exp + SEM stat + FF +
+BF-mode + B_gap) refit per toy; for HQE, HQE toys paired with step-6 SEM toys.
 
 Usage:
-  python3 7_data_results.py --submit
-  python3 7_data_results.py [--n-toys 1000]
+  python3 8_data_results.py --submit
+  python3 8_data_results.py [--n-toys 1000]
 """
 import argparse
 import json
@@ -439,8 +439,8 @@ def run(cfg, n_toys, seed):
     import plothist  # noqa: F401  (house style)
     import matplotlib.pyplot as plt
 
-    out5 = Path(cfg["paths"]["output"]) / "5"
-    od, fd = Path(cfg["paths"]["output"]) / "7", HERE / "figures" / "7"
+    out5 = Path(cfg["paths"]["output"]) / "6"
+    od, fd = Path(cfg["paths"]["output"]) / "8", HERE / "figures" / "8"
     od.mkdir(parents=True, exist_ok=True)
     fd.mkdir(parents=True, exist_ok=True)
     T = dict(np.load(out5 / "toys.npz"))
@@ -481,11 +481,11 @@ def main():
     args = p.parse_args()
     cfg = yaml.safe_load(open(args.config))
     if args.submit:
-        logs = HERE / "logs" / "7"
+        logs = HERE / "logs" / "8"
         logs.mkdir(parents=True, exist_ok=True)
         dep = f' -w "done({args.after})"' if args.after else ""
-        cmd = (f'bsub -q {cfg["generation"]["queue"]} -env all -J s7data{dep} -n 4 -oo {logs}/run.log '
-               f'"cd {HERE} && python3 7_data_results.py --config {args.config} --n-toys {args.n_toys}"')
+        cmd = (f'bsub -q {cfg["generation"]["queue"]} -env all -J s8data{dep} -n 4 -oo {logs}/run.log '
+               f'"cd {HERE} && python3 8_data_results.py --config {args.config} --n-toys {args.n_toys}"')
         print(cmd)
         subprocess.run(cmd, shell=True, check=True)
     else:

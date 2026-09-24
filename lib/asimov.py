@@ -1,4 +1,4 @@
-"""Asimov gap-truth scenarios (config `asimov.scenarios`), shared by steps 5 and 6."""
+"""Asimov gap-truth scenarios (config `asimov.scenarios`), shared by steps 6 and 7."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 COLS = ["Mx", "El_B", "q2", "total_weight", "decay_name"]
-MAX_ORDER = 6   # raw moment orders stored per observable (step 5) and available to steps 6-7
+MAX_ORDER = 6   # raw moment orders stored per observable (step 6) and available to steps 7-8
 
 
 def power_matrix(mx2, el, q2) -> np.ndarray:

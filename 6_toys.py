@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 5: toy ensembles shared by step 6 (Asimov closure) and step 7 (data).
+"""Step 6: toy ensembles shared by step 7 (Asimov closure) and step 8 (data).
 
 Every toy draws, independently:
   SEM template      cocktail bootstrap A, weights x {1, FF, BF-mode, FF*BF-mode}
@@ -7,17 +7,17 @@ Every toy draws, independently:
   pseudo-inclusive  cocktail bootstrap B and a bootstrap of each Asimov gap truth (thr=0)
   experiment        draw from the averaged raw-moment covariance (data thresholds)
   bf_gap            z for the gap budget: B_gap' = B_gap + z*sigma, c_true = B_incl / B_gap'
-  SEM stack         binned SEM densities (FF*BF-mode variant) for the step-7 stack band
+  SEM stack         binned SEM densities (FF*BF-mode variant) for the step-8 stack band
 
-Outputs (output/5/):
+Outputs (output/6/):
   toys.npz                                  all per-toy components + nominal values
   residual_covariance_{obs}_{source}.json   data-side residual mean/cov per systematic source
   toy_ensemble_{obs}_{source}.npz           the corresponding per-toy residuals
 
 Usage:
-  python3 5_residual_covariance.py --submit [--dry-run]   # toy chunks + dependent merge job
-  python3 5_residual_covariance.py --toy-job --chunk 0
-  python3 5_residual_covariance.py --merge
+  python3 6_toys.py --submit [--dry-run]   # toy chunks + dependent merge job
+  python3 6_toys.py --toy-job --chunk 0
+  python3 6_toys.py --merge
 """
 import argparse
 import json
@@ -49,7 +49,7 @@ BASE_COLS = ["Mx", "El_B", "q2", "total_weight", "decay_name"]
 
 
 def out_dir(cfg):
-    return Path(cfg["paths"]["output"]) / "5"
+    return Path(cfg["paths"]["output"]) / "6"
 
 
 def thresholds(cfg, exp_avg):
@@ -61,7 +61,7 @@ def thresholds(cfg, exp_avg):
 
 
 def stack_edges(cfg):
-    """Bins of the step-7 SEM stack: Mx [GeV], El [GeV], q2 [GeV^2] over the data support."""
+    """Bins of the step-8 SEM stack: Mx [GeV], El [GeV], q2 [GeV^2] over the data support."""
     sup = cfg["data"]["support"]
     return {"Mx": np.linspace(*np.sqrt(sup["mx2"]), 80), "El": np.linspace(*sup["el"], 80),
             "Q2": np.linspace(*sup["q2"], 80)}
@@ -246,10 +246,10 @@ def run_merge(cfg):
 # ── Submit ───────────────────────────────────────────────────────────────────
 
 def run_submit(cfg, config_path, dry_run):
-    logs = HERE / "logs" / "5"
+    logs = HERE / "logs" / "6"
     logs.mkdir(parents=True, exist_ok=True)
-    queue, tag = cfg["generation"]["queue"], "s5toy"
-    py = f"cd {HERE} && python3 5_residual_covariance.py --config {config_path}"
+    queue, tag = cfg["generation"]["queue"], "s6toy"
+    py = f"cd {HERE} && python3 6_toys.py --config {config_path}"
     cmds = [f'bsub -q {queue} -env all -J {tag}{c} -n 6 -oo {logs}/chunk_{c:04d}.log "{py} --toy-job --chunk {c}"'
             for c in range(cfg["toys"]["n_chunks"])]
     cmds.append(f'bsub -q {queue} -env all -J {tag}_merge -w "ended({tag}*)" -n 2 -oo {logs}/merge.log "{py} --merge"')

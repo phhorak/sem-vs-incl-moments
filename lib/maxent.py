@@ -1,4 +1,4 @@
-"""Hausdorff-feasibility check and MaxEnt inversion on [0,1], shared by steps 6 and 7.
+"""Hausdorff-feasibility check and MaxEnt inversion on [0,1], shared by steps 7 and 8.
 The MaxEnt density is found by L-BFGS-B on the convex dual.
 
 Conventions:

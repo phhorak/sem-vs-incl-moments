@@ -160,12 +160,12 @@ plots:
   weight_col: total_weight
 
 
-# ── Steps 5-7: residual moments, toys, MaxEnt ───────────────────────────────
+# ── Steps 6-8: residual moments, toys, MaxEnt ───────────────────────────────
 maxent:
   grid_size: 2000
   mom_tol: 1.0e-6          # converged <=> max_k |m_k(f) - m_k| < mom_tol
   n_moments: [1, 2, 3, 4]  # N = highest moment order used, m_1..m_N (m_0 = 1 always)
-  n_moments_extended: [1, 2, 3, 4, 5, 6]   # extra step-6 figure set (total band only)
+  n_moments_extended: [1, 2, 3, 4, 5, 6]   # extra step-7 figure set (total band only)
   # Endpoint priors f(t) ~ t^alpha (1-t)^beta (draft, sec. idea+approach).
   # Mx2 lower edge: no statement possible; El: E_l^2 at 0, eps^(3+a) with a=1/2 at the top;
   # q2: finite at 0, eps^(3/2) at the top.
