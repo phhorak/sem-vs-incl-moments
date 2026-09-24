@@ -139,12 +139,13 @@ def load_hqe_raw(path) -> tuple[np.ndarray, np.ndarray]:
     return raw_c, raw_t
 
 
-def hqe_incl_deviations(path, n: int, rng: np.random.Generator, max_order: int) -> np.ndarray:
+def hqe_incl_deviations(raw_c: np.ndarray, raw_t: np.ndarray, n: int, rng: np.random.Generator,
+                        max_order: int) -> np.ndarray:
     """(n, 3*max_order) relative deviations of the inclusive raw moments (mx2, el, q2 x orders
-    1..max_order) from n HQE toys. The fit provides orders 1-3; higher orders are drawn
-    conditionally on them, with the relative uncertainty continuing the power law in the order
-    and rho(i,j) = rho_adj**|i-j| (rho_adj: mean measured adjacent-order correlation)."""
-    raw_c, raw_t = load_hqe_raw(path)
+    1..max_order), drawn from the HQE toys `raw_t` around `raw_c` (as from load_hqe_raw). The fit
+    provides orders 1-3; higher orders are drawn conditionally on them, with the relative
+    uncertainty continuing the power law in the order and rho(i,j) = rho_adj**|i-j|
+    (rho_adj: mean measured adjacent-order correlation)."""
     d3 = raw_t[rng.choice(len(raw_t), n, replace=n > len(raw_t))] / raw_c - 1.0
     K = max_order
     out = np.empty((n, 3 * K))

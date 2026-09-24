@@ -11,9 +11,12 @@
 All bands are 68% toy intervals: the step-6 residual toys ("all" source: exp + SEM stat + FF +
 BF-mode + B_gap) refit per toy; for HQE, HQE toys paired with step-6 SEM toys.
 
+Everything is read from the step-6 bundle (lib/bundle.py); the MC samples are not needed.
+
 Usage:
-  python3 8_data_results.py --submit
-  python3 8_data_results.py [--n-toys 1000]
+  python3 8_data_results.py [--bundle FILE] [--n-toys 1000]
+  python3 8_data_results.py --submit [--after JOB]
+Outputs go to <output>/8 (the configured output directory, else ./output) and figures/8.
 """
 import argparse
 import json
@@ -32,9 +35,9 @@ HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
 from lib.asimov import MAX_ORDER
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01, raw_to_mu01_jacobian
-from lib.systematics import c_true, load_hqe_raw, read_parquet_downcast, write_budget_tex
+from lib.bundle import NAME as BUNDLE_NAME, Bundle, output_root
+from lib.systematics import c_true, write_budget_tex
 
-HQE_TOYS = HERE / "inputs" / "hqe_likelihood_toys" / "likelihood_toys.h5"
 SOURCES = ["stat_ff", "stat_bfmode", "stat_ff_bfmode", "all"]
 OBS = ["Mx", "El", "Q2"]
 VAR = {"Mx": "mx2", "El": "el", "Q2": "q2"}
@@ -109,24 +112,18 @@ class JointFit:
         return self.lo + self.t * self.span
 
 
-def load_res(out5, obs, src):
-    d = json.load(open(out5 / f"residual_covariance_{obs}_{src}.json"))
-    return dict(nominal=np.array(d["nominal"]), cov=np.array(d["cov"]),
-                thr=sorted({p["thr"] for p in d["points"]}))
-
-
 def band(curves):
     curves = np.asarray(curves)
     return np.percentile(curves, [16, 84], axis=0) if len(curves) > 10 else None
 
 
-def joint_results(cfg, out5, n_toys, rng):
+def joint_results(cfg, B, n_toys, rng):
     sup, res = cfg["data"]["support"], {}
     for obs in ("El", "Q2"):
         lo, hi = sup[VAR[obs]]
         if obs == "Q2":
             lo = cfg["data"]["joint_fit_q2_lo"]
-        R = load_res(out5, obs, "all")
+        R = B.residual(obs, "all")
         jf = JointFit(cfg, obs, R["thr"], R["cov"], True, lo, hi)
         c_best, _ = jf.fit(R["nominal"], M_JOINT)
         chi2 = jf.chi2(c_best, jf.target(R["nominal"]), M_JOINT)
@@ -135,11 +132,11 @@ def joint_results(cfg, out5, n_toys, rng):
         c_a, _ = asimov.fit(R["nominal"], M_JOINT)
         per_source = {}
         for src in SOURCES:
-            S = load_res(out5, obs, src)
+            S = B.residual(obs, src)
             j = JointFit(cfg, obs, S["thr"], S["cov"], True, lo, hi)
             c, _ = j.fit(S["nominal"], M_JOINT)
             per_source[src] = j.chi2(c, j.target(S["nominal"]), M_JOINT) / dof
-        toys = np.load(out5 / f"toy_ensemble_{obs}_all.npz")["raw_gap"]
+        toys = R["toys"]
         idx = rng.choice(len(toys), min(n_toys, len(toys)), replace=False)
         t0, curves = time.time(), []
         for i in idx:
@@ -154,10 +151,10 @@ def joint_results(cfg, out5, n_toys, rng):
     return res
 
 
-def mx_results(cfg, out5, n_toys, rng):
+def mx_results(cfg, B, n_toys, rng):
     lo, hi = cfg["data"]["support"]["mx2"]
-    R = load_res(out5, "Mx", "all")
-    toys = np.load(out5 / "toy_ensemble_Mx_all.npz")["raw_gap"]
+    R = B.residual("Mx", "all")
+    toys = R["toys"]
     idx = rng.choice(len(toys), min(n_toys, len(toys)), replace=False)
     out = {}
     for i, thr in enumerate(R["thr"]):
@@ -176,7 +173,7 @@ def mx_results(cfg, out5, n_toys, rng):
 def hqe_results(cfg, T, n_toys, rng, subtract):
     """Exact inversion at threshold 0. subtract=True: gap density (HQE toy x SEM toy x B_gap);
     False: full inclusive density, HQE toys only."""
-    raw_c9, raw_t9 = load_hqe_raw(HQE_TOYS)
+    raw_c9, raw_t9 = T["hqe_central"], T["hqe_toys"]
     mc, sysc, sup = cfg["maxent"], cfg["systematics"], cfg["data"]["support"]
     solver = MaxEnt(np.linspace(0, 1, 400), mom_tol=mc["mom_tol"])
     bf_gap = float(T["bf_gap"])
@@ -222,7 +219,7 @@ def hqe_budget(cfg, T, orders=(1, 2, 3)):
     """Relative uncertainty [%] of the threshold-0 residual gap moments per source (HQE toys,
     SEM template, B_gap), from all toys; FF and BF-mode are taken on top of SEM stat."""
     sysc, bf_gap = cfg["systematics"], float(T["bf_gap"])
-    raw_c9, raw_t9 = load_hqe_raw(HQE_TOYS)
+    raw_c9, raw_t9 = T["hqe_central"], T["hqe_toys"]
     n = len(T["z_gap"])
     raw_h = raw_t9[np.random.default_rng(7).choice(len(raw_t9), n, replace=n > len(raw_t9))]
     c0, ct = float(c_true(sysc, bf_gap)), c_true(sysc, bf_gap, T["z_gap"])[:, None]
@@ -250,7 +247,7 @@ BUDGET_LABELS = {"hqe": "HQE fit", "stat": "MC stat.", "ff": "Form factors", "bf
 
 # ── Feasibility table ────────────────────────────────────────────────────────
 
-def feasibility(cfg, out5):
+def feasibility(cfg, B):
     """Per threshold: residual [0,1] moments on the data support, Hausdorff and MaxEnt (N=4)."""
     mc, sup = cfg["maxent"], cfg["data"]["support"]
     solver = MaxEnt(np.linspace(0, 1, mc["grid_size"]), mom_tol=mc["mom_tol"])
@@ -258,7 +255,7 @@ def feasibility(cfg, out5):
     for obs in OBS:
         v = VAR[obs]
         lo, hi = sup[v]
-        R = load_res(out5, obs, "all")
+        R = B.residual(obs, "all")
         for i, thr in enumerate(R["thr"]):
             m = raw_to_mu01(np.r_[1.0, R["nominal"][3 * i:3 * i + 3]], lo, hi)
             haus = hausdorff_check(m)[0]
@@ -392,20 +389,13 @@ def plot_hqe_full(plt, hqe_full, path):
 def plot_hqe_vs_stack(plt, cfg, T, hqe_full, path):
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
-    df = read_parquet_downcast(Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet",
-                               ["Mx", "El_B", "q2", "total_weight", "category"], category_cols=("category",))
-    df = df[np.isfinite(df[["Mx", "El_B", "q2", "total_weight"]].to_numpy(float)).all(axis=1)
-            & (df["total_weight"] > 0)]
-    col = {"Mx": "Mx", "El": "El_B", "Q2": "q2"}
+    names = [str(c) for c in T["stack_categories"]]
     fig, axes = figure(plt)
     for ax, obs in zip(axes, OBS):
         e = T[f"stackedges_{obs}"]
-        wsum = df["total_weight"].sum()
         base = np.zeros(len(e) - 1)
         for cat, color in zip(CATEGORIES, CAT_COLORS):
-            m = (df["category"] == cat).to_numpy()
-            h = np.histogram(df[col[obs]].to_numpy(float)[m], e, weights=df["total_weight"].to_numpy(float)[m])[0]
-            h = h / (wsum * np.diff(e))
+            h = T[f"stack_nominal_{obs}"][names.index(cat)] if cat in names else np.zeros(len(e) - 1)
             ax.stairs(base + h, e, baseline=base, fill=True, color=color, alpha=0.85, lw=0)
             base = base + h
         lo_, hi_ = np.percentile(T[f"stack_{obs}"], [16, 84], axis=0)
@@ -433,25 +423,24 @@ def plot_hqe_vs_stack(plt, cfg, T, hqe_full, path):
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def run(cfg, n_toys, seed):
+def run(B, n_toys, seed):
     import matplotlib
     matplotlib.use("Agg")
     import plothist  # noqa: F401  (house style)
     import matplotlib.pyplot as plt
 
-    out5 = Path(cfg["paths"]["output"]) / "6"
-    od, fd = Path(cfg["paths"]["output"]) / "8", HERE / "figures" / "8"
+    cfg, T = B.cfg, B.toys
+    od, fd = output_root(yaml.safe_load(open(HERE / "config.yaml")), HERE) / "8", HERE / "figures" / "8"
     od.mkdir(parents=True, exist_ok=True)
     fd.mkdir(parents=True, exist_ok=True)
-    T = dict(np.load(out5 / "toys.npz"))
     rng = np.random.default_rng(seed)
 
     budget = hqe_budget(cfg, T)
     write_budget_tex(budget, od / "moment_budget_data_thr0.tex", BUDGET_LABELS)
-    rows = feasibility(cfg, out5)
+    rows = feasibility(cfg, B)
     write_feasibility_tex(rows, od / "feasibility_table.tex")
-    joint = joint_results(cfg, out5, n_toys, rng)
-    mx = mx_results(cfg, out5, n_toys, rng)
+    joint = joint_results(cfg, B, n_toys, rng)
+    mx = mx_results(cfg, B, n_toys, rng)
     hqe_gap = hqe_results(cfg, T, n_toys, rng, subtract=True)
     hqe_full = hqe_results(cfg, T, n_toys, rng, subtract=False)
 
@@ -473,23 +462,24 @@ def run(cfg, n_toys, seed):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--config", default="config.yaml")
+    p.add_argument("--bundle", help=f"step-6 bundle (default: <output>/6/{BUNDLE_NAME} from config.yaml)")
     p.add_argument("--n-toys", type=int, default=1000)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--submit", action="store_true")
     p.add_argument("--after", help="LSF job name the submitted job waits for")
     args = p.parse_args()
-    cfg = yaml.safe_load(open(args.config))
+    cfg = yaml.safe_load(open(HERE / "config.yaml"))
+    bundle = Path(args.bundle).resolve() if args.bundle else output_root(cfg, HERE) / "6" / BUNDLE_NAME
     if args.submit:
         logs = HERE / "logs" / "8"
         logs.mkdir(parents=True, exist_ok=True)
         dep = f' -w "done({args.after})"' if args.after else ""
         cmd = (f'bsub -q {cfg["generation"]["queue"]} -env all -J s8data{dep} -n 4 -oo {logs}/run.log '
-               f'"cd {HERE} && python3 8_data_results.py --config {args.config} --n-toys {args.n_toys}"')
+               f'"cd {HERE} && python3 8_data_results.py --bundle {bundle} --n-toys {args.n_toys}"')
         print(cmd)
         subprocess.run(cmd, shell=True, check=True)
     else:
-        run(cfg, args.n_toys, args.seed)
+        run(Bundle(bundle), args.n_toys, args.seed)
 
 
 if __name__ == "__main__":

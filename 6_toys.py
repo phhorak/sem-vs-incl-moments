@@ -13,11 +13,13 @@ Outputs (output/6/):
   toys.npz                                  all per-toy components + nominal values
   residual_covariance_{obs}_{source}.json   data-side residual mean/cov per systematic source
   toy_ensemble_{obs}_{source}.npz           the corresponding per-toy residuals
+  gap_toys_bundle.npz                       everything steps 7 and 8 need, in one file (lib/bundle.py)
 
 Usage:
-  python3 6_toys.py --submit [--dry-run]   # toy chunks + dependent merge job
+  python3 6_toys.py --submit [--dry-run]   # toy chunks, then merge and bundle jobs
   python3 6_toys.py --toy-job --chunk 0
   python3 6_toys.py --merge
+  python3 6_toys.py --bundle
 """
 import argparse
 import json
@@ -253,6 +255,7 @@ def run_submit(cfg, config_path, dry_run):
     cmds = [f'bsub -q {queue} -env all -J {tag}{c} -n 6 -oo {logs}/chunk_{c:04d}.log "{py} --toy-job --chunk {c}"'
             for c in range(cfg["toys"]["n_chunks"])]
     cmds.append(f'bsub -q {queue} -env all -J {tag}_merge -w "ended({tag}*)" -n 2 -oo {logs}/merge.log "{py} --merge"')
+    cmds.append(f'bsub -q {queue} -env all -J s6bundle -w "done({tag}_merge)" -n 6 -oo {logs}/bundle.log "{py} --bundle"')
     for cmd in cmds:
         print(cmd)
         if not dry_run:
@@ -267,12 +270,16 @@ def main():
     p.add_argument("--toy-job", action="store_true")
     p.add_argument("--chunk", type=int, default=0)
     p.add_argument("--merge", action="store_true")
+    p.add_argument("--bundle", action="store_true")
     args = p.parse_args()
     cfg = yaml.safe_load(open(args.config))
     if args.toy_job:
         run_toy_job(cfg, args.chunk)
     elif args.merge:
         run_merge(cfg)
+    elif args.bundle:
+        from lib.bundle import build
+        print(f"-> {build(cfg, Path(args.config).read_text(), HERE)}")
     elif args.submit:
         run_submit(cfg, args.config, args.dry_run)
     else:

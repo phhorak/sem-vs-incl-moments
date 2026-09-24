@@ -12,10 +12,15 @@ Bands come from the step-6 toys, recombined per systematic source (each on top o
   bf_gap        assumed gap budget in c_true
   total         all of the above
 
+Everything is read from the step-6 bundle (lib/bundle.py), which also carries the configuration
+the toys were made with; the MC samples are not needed.
+
 Usage:
-  python3 7_asimov_closure.py --submit                  # inversion jobs + dependent plot job
+  python3 7_asimov_closure.py --bundle FILE --run         # all inversions and plots, locally
+  python3 7_asimov_closure.py --submit [--after JOB]      # inversion jobs + dependent plot job (LSF)
   python3 7_asimov_closure.py --invert SCENARIO SOURCE
   python3 7_asimov_closure.py --plot
+Outputs go to <output>/7 (the configured output directory, else ./output) and figures/7.
 """
 import argparse
 import json
@@ -30,24 +35,25 @@ import yaml
 
 HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
-from lib.asimov import MAX_ORDER, truth_groups
+from lib.asimov import MAX_ORDER
+from lib.bundle import NAME as BUNDLE_NAME, Bundle, output_root
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01
-from lib.systematics import c_true, hqe_incl_deviations, read_parquet_downcast, write_budget_tex
+from lib.systematics import c_true, hqe_incl_deviations, write_budget_tex
 
 SOURCES = ["stat", "ff", "bf_mode", "incl_moments", "bf_gap", "total"]
 OBS = ["mx2", "el", "q2"]
 PCTS = [2.5, 16, 50, 84, 97.5]
 
+OUT = output_root(yaml.safe_load(open(HERE / "config.yaml")), HERE) / "7"   # local setting, not the bundle's
 
-HQE_TOYS = HERE / "inputs" / "hqe_likelihood_toys" / "likelihood_toys.h5"
+
+def load(B):
+    """Configuration, step-6 toys, and per toy the HQE relative deviations of the inclusive moments."""
+    cfg, T = B.cfg, B.toys
+    dev = hqe_incl_deviations(*B.hqe, len(T["z_gap"]), np.random.default_rng([cfg["toys"]["seed"], 6]), MAX_ORDER)
+    return cfg, T, dev
 
 
-def load(cfg):
-    """Step-5 toys and, per toy, HQE-toy relative deviations of the inclusive moments."""
-    T = dict(np.load(Path(cfg["paths"]["output"]) / "7" / "toys.npz"))
-    dev = hqe_incl_deviations(HQE_TOYS, len(T["z_gap"]), np.random.default_rng([cfg["toys"]["seed"], 6]),
-                              MAX_ORDER)
-    return T, dev
 
 
 def residual(cfg, T, dev, scen, src):
@@ -82,9 +88,9 @@ def scenario_support(T, scen):
 
 # ── Inversion job ────────────────────────────────────────────────────────────
 
-def run_invert(cfg, scen, src):
+def run_invert(B, scen, src):
+    cfg, T, dev = load(B)
     mc = cfg["maxent"]
-    T, dev = load(cfg)
     sup = scenario_support(T, scen)
     solver = MaxEnt(np.linspace(0, 1, mc["grid_size"]), mom_tol=mc["mom_tol"])
     nom = residual(cfg, T, dev, scen, None)
@@ -112,22 +118,12 @@ def run_invert(cfg, scen, src):
             out[f"nconv_{key}"] = len(f)
             print(f"{scen}/{src} {key}: Hausdorff {haus.mean():.3f}, converged {len(f)}/{len(toys)}",
                   flush=True)
-    od = Path(cfg["paths"]["output"]) / "7"
+    od = OUT
     od.mkdir(parents=True, exist_ok=True)
     np.savez(od / f"bands_{scen}_{src}.npz", **out)
 
 
 # ── Plotting ─────────────────────────────────────────────────────────────────
-
-def display_range(groups, q=(0.001, 0.995), pad=0.1):
-    """Mx display range [GeV] covering the truth's weighted quantiles q, padded."""
-    mx = np.sqrt(np.concatenate([g["mx2"] for g in groups]))
-    w = np.concatenate([g["w"] for g in groups])
-    o = np.argsort(mx)
-    cw = np.cumsum(w[o]) / w.sum()
-    lo, hi = np.interp(q, cw, mx[o])
-    return lo - pad * (hi - lo), hi + pad * (hi - lo)
-
 
 CON_COLOR, UNCON_COLOR = "#ff7f0e", "#6a51a3"
 COMP_COLORS = ["#1f77b4", "#2ca02c", "#d62728", "#9467bd"]
@@ -162,7 +158,7 @@ def smooth_truth(h, sigma_bins, finite_lo=False):
 class Panels:
     """Everything one scenario's figures need, in display coordinates (Mx rather than Mx2)."""
 
-    def __init__(self, cfg, T, dev, scen, groups):
+    def __init__(self, cfg, T, dev, scen, truth):
         mc, sc = cfg["maxent"], cfg["asimov"]["scenarios"][scen]
         self.scen, self.Ns, self.Ns_ext = scen, list(mc["n_moments"]), list(mc["n_moments_extended"])
         self.legends = [c["legend"] for c in sc["components"]]
@@ -178,7 +174,7 @@ class Panels:
             x = lo + t * (hi - lo)
             jac = 2 * np.sqrt(x) if obs == "mx2" else np.ones_like(x)
             xd = np.sqrt(x) if obs == "mx2" else x
-            xlim = (sc.get("mx_display") or display_range(groups)) if obs == "mx2" else (lo, hi)
+            xlim = tuple(truth["mxrange"]) if obs == "mx2" else (lo, hi)
             m = mu01(nom, obs, sup)
             curves = {}
             for N in all_n(mc):
@@ -189,29 +185,24 @@ class Panels:
                                  f_x=(con.f / (hi - lo), unc.f / (hi - lo)))
             bands = {}
             for src in SOURCES:
-                p = Path(cfg["paths"]["output"]) / "7" / f"bands_{scen}_{src}.npz"
+                p = OUT / f"bands_{scen}_{src}.npz"
                 if p.exists():
                     B = np.load(p)
                     bands[src] = {N: dict(pct=B[f"pct_{obs}_N{N}"] * jac, haus=B[f"haus_{obs}_N{N}"],
                                           nconv=int(B[f"nconv_{obs}_N{N}"]), err=B[f"err_{obs}_N{N}"])
                                   for N in all_n(mc) if f"pct_{obs}_N{N}" in B}
             # truth: stacked, smoothed components (single-hadron components drawn as a line)
-            xt = np.concatenate([np.sqrt(g["mx2"]) if obs == "mx2" else g[obs] for g in groups])
-            wt = np.concatenate([g["w"] for g in groups])
-            comp = np.concatenate([np.full(len(g["w"]), g["comp"]) for g in groups])
-            edges = np.linspace(xd[0], xd[-1], 1200 if obs == "mx2" else 500)
+            edges = truth[f"{obs}_edges"]
             db = edges[1] - edges[0]
             sig = cfg["asimov"]["truth_smoothing"]["mx" if obs == "mx2" else obs]
             dens, delta = [], []
-            for i in range(len(self.legends)):
-                sel = comp == i
-                mu = np.average(xt[sel], weights=wt[sel])
-                delta.append(obs == "mx2" and np.sqrt(np.average((xt[sel] - mu) ** 2, weights=wt[sel])) < 0.02)
-                h = np.histogram(xt[sel], edges, weights=wt[sel])[0] / db
-                dens.append((mu, wt[sel].sum()) if delta[-1] else smooth_truth(h, sig / db, finite_lo=obs == "q2"))
+            for i, (wsum, mu, sd) in enumerate(truth["stats"]):
+                delta.append(obs == "mx2" and sd < 0.02)
+                h = truth[f"{obs}_dens"][i]
+                dens.append((mu, wsum) if delta[-1] else smooth_truth(h, sig / db, finite_lo=obs == "q2"))
             # L1 distance to the truth, on the reconstruction variable (Mx2, El, q2)
-            h_x, e_x = np.histogram(np.concatenate([g[obs] for g in groups]), 200, (lo, hi), weights=wt)
-            h_x = h_x / (wt.sum() * np.diff(e_x))
+            h_x = truth[f"{obs}_l1"]
+            e_x = np.linspace(lo, hi, len(h_x) + 1)
             xc = 0.5 * (e_x[1:] + e_x[:-1])
             for N, c in curves.items():
                 c["l1"] = [float(np.sum(np.abs(np.interp(xc, x, fx) - h_x)) * np.diff(e_x)[0]) for fx in c["f_x"]]
@@ -233,7 +224,6 @@ class Panels:
     def draw(self, axes, obs, band, Ns, headroom=1.65):
         D = self.d[obs]
         centers = 0.5 * (D["edges"][1:] + D["edges"][:-1])
-        db = D["edges"][1] - D["edges"][0]
         ytop = headroom * self.ymax(obs, Ns)
         for ax, N in zip(axes.flat, Ns):
             base = np.zeros_like(centers)
@@ -278,31 +268,20 @@ class Panels:
         return h
 
 
-def run_plot(cfg):
+def run_plot(B):
     import matplotlib
     matplotlib.use("Agg")
     import plothist  # noqa: F401  (house style)
     import matplotlib.pyplot as plt
 
-    T, dev = load(cfg)
+    cfg, T, dev = load(B)
     fig_root = HERE / "figures" / "7"
-    ck = None
-    needs_ck = any("decays" in c for s in cfg["asimov"]["scenarios"].values() for c in s["components"])
-    if needs_ck:
-        df = read_parquet_downcast(Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet",
-                                   ["Mx", "El_B", "q2", "total_weight", "decay_name"])
-        df = df[np.isfinite(df[["Mx", "El_B", "q2", "total_weight"]].to_numpy(float)).all(axis=1)
-                & (df["total_weight"] > 0)]
-        ck = dict(mx2=df["Mx"].to_numpy(float) ** 2, el=df["El_B"].to_numpy(float), q2=df["q2"].to_numpy(float),
-                  w=df["total_weight"].to_numpy(float), codes=df["decay_name"].cat.codes.to_numpy(),
-                  cats=np.asarray(df["decay_name"].cat.categories, dtype=str))
-        del df
 
     summary = {}
     for scen in cfg["asimov"]["scenarios"]:
         fig_dir = fig_root / scen
         fig_dir.mkdir(parents=True, exist_ok=True)
-        P = Panels(cfg, T, dev, scen, truth_groups(cfg, scen, ck))
+        P = Panels(cfg, T, dev, scen, B.truth(scen))
         print(f"{scen}: nominal closure max|residual - truth| = {P.closure:.1e}")
         for band in (False, True):
             tag = "_band" if band else ""
@@ -333,9 +312,9 @@ def run_plot(cfg):
         summary[scen] = scenario_summary(P)
         summary[scen]["moment_budget_pct"] = moment_budget(cfg, T, dev, scen)
         write_budget_tex(summary[scen]["moment_budget_pct"],
-                         Path(cfg["paths"]["output"]) / "7" / f"moment_budget_{scen}.tex", BUDGET_LABELS)
+                         OUT / f"moment_budget_{scen}.tex", BUDGET_LABELS)
         print(f"  -> {fig_dir}")
-    od = Path(cfg["paths"]["output"]) / "7"
+    od = OUT
     json.dump(summary, open(od / "summary.json", "w"), indent=1)
     write_tex(summary, od / "closure_table.tex")
 
@@ -432,11 +411,11 @@ def write_tex(summary, path):
 
 # ── Submit ───────────────────────────────────────────────────────────────────
 
-def run_submit(cfg, config_path, dry_run, after=None):
+def run_submit(cfg, bundle, dry_run, after=None):
     logs = HERE / "logs" / "7"
     logs.mkdir(parents=True, exist_ok=True)
     queue, tag = cfg["generation"]["queue"], "s7inv"
-    py = f"cd {HERE} && python3 7_asimov_closure.py --config {config_path}"
+    py = f"cd {HERE} && python3 7_asimov_closure.py --bundle {bundle}"
     dep = f' -w "done({after})"' if after else ""
     cmds = [f'bsub -q {queue} -env all -J {tag}_{s}_{src}{dep} -oo {logs}/invert_{s}_{src}.log "{py} --invert {s} {src}"'
             for s in cfg["asimov"]["scenarios"] for src in SOURCES]
@@ -449,22 +428,32 @@ def run_submit(cfg, config_path, dry_run, after=None):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--config", default="config.yaml")
+    p.add_argument("--bundle", help=f"step-6 bundle (default: <output>/6/{BUNDLE_NAME} from config.yaml)")
+    p.add_argument("--run", action="store_true", help="all inversions, then the plots, in this process")
     p.add_argument("--submit", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--invert", nargs=2, metavar=("SCENARIO", "SOURCE"))
     p.add_argument("--plot", action="store_true")
     p.add_argument("--after", help="LSF job name the submitted jobs wait for")
     args = p.parse_args()
-    cfg = yaml.safe_load(open(args.config))
-    if args.invert:
-        run_invert(cfg, *args.invert)
-    elif args.plot:
-        run_plot(cfg)
-    elif args.submit:
-        run_submit(cfg, args.config, args.dry_run, args.after)
-    else:
+    bundle = Path(args.bundle) if args.bundle else \
+        output_root(yaml.safe_load(open(HERE / "config.yaml")), HERE) / "6" / BUNDLE_NAME
+    if args.submit:
+        run_submit(yaml.safe_load(open(HERE / "config.yaml")), bundle.resolve(), args.dry_run, args.after)
+        return
+    if not (args.run or args.invert or args.plot):
         p.print_help()
+        return
+    B = Bundle(bundle)
+    if args.invert:
+        run_invert(B, *args.invert)
+    elif args.plot:
+        run_plot(B)
+    else:
+        for scen in B.cfg["asimov"]["scenarios"]:
+            for src in SOURCES:
+                run_invert(B, scen, src)
+        run_plot(B)
 
 
 if __name__ == "__main__":
