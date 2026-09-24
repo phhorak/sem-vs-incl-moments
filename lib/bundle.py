@@ -35,6 +35,12 @@ def output_root(cfg: dict, here: Path) -> Path:
     return p if p.is_dir() else here / "output"
 
 
+def default_path(here: Path) -> Path:
+    """This machine's step-6 output if built here, else the copy shipped in data/."""
+    p = output_root(yaml.safe_load(open(here / "config.yaml")), here) / "6" / NAME
+    return p if p.exists() else here / "data" / NAME
+
+
 def display_range(groups, q=(0.001, 0.995), pad=0.1):
     """M_X display range [GeV] covering the truth's weighted quantiles q, padded."""
     mx = np.sqrt(np.concatenate([g["mx2"] for g in groups]))

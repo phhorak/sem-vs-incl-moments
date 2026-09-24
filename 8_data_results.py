@@ -35,7 +35,7 @@ HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
 from lib.asimov import MAX_ORDER
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01, raw_to_mu01_jacobian
-from lib.bundle import NAME as BUNDLE_NAME, Bundle, output_root
+from lib.bundle import Bundle, default_path, output_root
 from lib.systematics import c_true, write_budget_tex
 
 SOURCES = ["stat_ff", "stat_bfmode", "stat_ff_bfmode", "all"]
@@ -462,14 +462,14 @@ def run(B, n_toys, seed):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--bundle", help=f"step-6 bundle (default: <output>/6/{BUNDLE_NAME} from config.yaml)")
+    p.add_argument("--bundle", help="step-6 bundle (default: <output>/6/ if built here, else data/)")
     p.add_argument("--n-toys", type=int, default=1000)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--submit", action="store_true")
     p.add_argument("--after", help="LSF job name the submitted job waits for")
     args = p.parse_args()
     cfg = yaml.safe_load(open(HERE / "config.yaml"))
-    bundle = Path(args.bundle).resolve() if args.bundle else output_root(cfg, HERE) / "6" / BUNDLE_NAME
+    bundle = Path(args.bundle).resolve() if args.bundle else default_path(HERE)
     if args.submit:
         logs = HERE / "logs" / "8"
         logs.mkdir(parents=True, exist_ok=True)

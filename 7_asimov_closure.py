@@ -36,7 +36,7 @@ import yaml
 HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
 from lib.asimov import MAX_ORDER
-from lib.bundle import NAME as BUNDLE_NAME, Bundle, output_root
+from lib.bundle import Bundle, default_path, output_root
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01
 from lib.systematics import c_true, hqe_incl_deviations, write_budget_tex
 
@@ -428,7 +428,7 @@ def run_submit(cfg, bundle, dry_run, after=None):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--bundle", help=f"step-6 bundle (default: <output>/6/{BUNDLE_NAME} from config.yaml)")
+    p.add_argument("--bundle", help="step-6 bundle (default: <output>/6/ if built here, else data/)")
     p.add_argument("--run", action="store_true", help="all inversions, then the plots, in this process")
     p.add_argument("--submit", action="store_true")
     p.add_argument("--dry-run", action="store_true")
@@ -436,8 +436,7 @@ def main():
     p.add_argument("--plot", action="store_true")
     p.add_argument("--after", help="LSF job name the submitted jobs wait for")
     args = p.parse_args()
-    bundle = Path(args.bundle) if args.bundle else \
-        output_root(yaml.safe_load(open(HERE / "config.yaml")), HERE) / "6" / BUNDLE_NAME
+    bundle = Path(args.bundle) if args.bundle else default_path(HERE)
     if args.submit:
         run_submit(yaml.safe_load(open(HERE / "config.yaml")), bundle.resolve(), args.dry_run, args.after)
         return
@@ -450,9 +449,10 @@ def main():
     elif args.plot:
         run_plot(B)
     else:
-        for scen in B.cfg["asimov"]["scenarios"]:
-            for src in SOURCES:
-                run_invert(B, scen, src)
+        from concurrent.futures import ProcessPoolExecutor
+        jobs = [(scen, src) for scen in B.cfg["asimov"]["scenarios"] for src in SOURCES]
+        with ProcessPoolExecutor(min(len(jobs), os.cpu_count() or 1)) as ex:
+            list(ex.map(run_invert, [B] * len(jobs), *zip(*jobs)))
         run_plot(B)
 
 
