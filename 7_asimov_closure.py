@@ -35,7 +35,7 @@ import yaml
 
 HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
-from lib.asimov import MAX_ORDER
+from lib.asimov import MAX_ORDER, smooth_truth
 from lib.bundle import Bundle, default_path, output_root
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01
 from lib.systematics import c_true, hqe_incl_deviations, write_budget_tex
@@ -142,17 +142,6 @@ def style(ax):
     ax.tick_params(axis="both", which="both", direction="in", top=True, right=True, labelsize=FS_TICK)
     for sp in ax.spines.values():
         sp.set_visible(True)
-
-
-def smooth_truth(h, sigma_bins, finite_lo=False):
-    """Gaussian smoothing that keeps the endpoint behaviour: odd reflection where the density
-    vanishes (forces zero at the edge), even reflection where it is finite (q2 -> 0)."""
-    from scipy.ndimage import gaussian_filter1d
-    n = min(int(4 * sigma_bins) + 1, len(h) - 1)
-    lo = h[1:n + 1][::-1] * (1 if finite_lo else -1)
-    hi = -h[-n - 1:-1][::-1]
-    s = gaussian_filter1d(np.concatenate([lo, h, hi]), sigma_bins, mode="constant")[n:n + len(h)]
-    return np.clip(s, 0.0, None)
 
 
 class Panels:

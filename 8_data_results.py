@@ -33,7 +33,7 @@ from scipy.optimize import minimize
 
 HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
-from lib.asimov import MAX_ORDER
+from lib.asimov import MAX_ORDER, smooth_truth
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01, raw_to_mu01_jacobian
 from lib.bundle import Bundle, default_path, output_root
 from lib.systematics import c_true, write_budget_tex
@@ -386,20 +386,30 @@ def plot_hqe_full(plt, hqe_full, path):
     plt.close(fig)
 
 
-def plot_hqe_vs_stack(plt, cfg, T, hqe_full, path):
+def plot_hqe_vs_stack(plt, T, hqe_full, smoothing, path):
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     names = [str(c) for c in T["stack_categories"]]
     fig, axes = figure(plt)
     for ax, obs in zip(axes, OBS):
+        # stacked, smoothed categories as in step 7; single-hadron categories (D, D* in Mx) as lines
         e = T[f"stackedges_{obs}"]
-        base = np.zeros(len(e) - 1)
+        xc, sig = 0.5 * (e[1:] + e[:-1]), smoothing[obs.lower()] / (e[1] - e[0])
+        sm = lambda h: smooth_truth(h, sig, finite_lo=obs == "Q2")
+        base, peaks = np.zeros(len(xc)), np.zeros(len(xc), bool)
         for cat, color in zip(CATEGORIES, CAT_COLORS):
-            h = T[f"stack_nominal_{obs}"][names.index(cat)] if cat in names else np.zeros(len(e) - 1)
-            ax.stairs(base + h, e, baseline=base, fill=True, color=color, alpha=0.85, lw=0)
-            base = base + h
-        lo_, hi_ = np.percentile(T[f"stack_{obs}"], [16, 84], axis=0)
-        ax.stairs(hi_, e, baseline=lo_, fill=True, color="0.15", alpha=0.45, lw=0, zorder=4)
+            h = T[f"stack_nominal_{obs}"][names.index(cat)] if cat in names else np.zeros(len(xc))
+            if obs == "Mx" and 0 < h.sum() < np.sort(h)[-2:].sum() / 0.95:
+                ax.axvline(np.average(xc, weights=h), color=color, lw=3.5, alpha=0.9)
+                peaks |= h > 0
+                continue
+            ax.fill_between(xc, base, base + sm(h), color=color, alpha=0.55, lw=0)
+            base = base + sm(h)
+        ax.plot(xc, base, color="0.25", lw=0.9)
+        # toys hold the total density: leave out the bins the smoothed lines would spill into
+        near = np.convolve(peaks, np.ones(2 * int(4 * sig) + 3), "same") > 0
+        lo_, hi_ = np.percentile([sm(h) for h in T[f"stack_{obs}"]], [16, 84], axis=0)
+        ax.fill_between(xc, lo_, hi_, where=~near, color="0.15", alpha=0.45, lw=0, zorder=4)
         h = hqe_full[obs]
         x, f, b0, b1 = h["x"], h["f"], *(h["band"] if h["band"] is not None else (None, None))
         if obs == "Mx":
@@ -413,7 +423,8 @@ def plot_hqe_vs_stack(plt, cfg, T, hqe_full, path):
     hm = hqe_full["Mx"]
     top = [y for y in (hm["f"], None if hm["band"] is None else hm["band"][1]) if y is not None]
     ymax = [1.4 * max(float(np.max(y * 2 * np.sqrt(hm["x"]))) for y in top) if top else None, None, None]
-    handles = [Patch(color=c, alpha=0.85, lw=0, label=l) for c, l in zip(CAT_COLORS, CAT_LABELS)]
+    handles = [Patch(color=c, alpha=0.55, lw=0, label=l) for cat, c, l in zip(CATEGORIES, CAT_COLORS, CAT_LABELS)
+               if cat in names and T["stack_nominal_El"][names.index(cat)].sum() > 0]
     handles += [Patch(color="0.15", alpha=0.45, lw=0, label="SEM 68%"),
                 Line2D([], [], color="black", lw=2.6, label="HQE inversion"),
                 Patch(facecolor="none", edgecolor="black", hatch="///", label="HQE 68%")]
@@ -430,7 +441,8 @@ def run(B, n_toys, seed):
     import matplotlib.pyplot as plt
 
     cfg, T = B.cfg, B.toys
-    od, fd = output_root(yaml.safe_load(open(HERE / "config.yaml")), HERE) / "8", HERE / "figures" / "8"
+    local = yaml.safe_load(open(HERE / "config.yaml"))   # plotting settings may be newer than the bundle
+    od, fd = output_root(local, HERE) / "8", HERE / "figures" / "8"
     od.mkdir(parents=True, exist_ok=True)
     fd.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
@@ -446,7 +458,7 @@ def run(B, n_toys, seed):
 
     plot_gap(plt, cfg, joint, mx, hqe_gap, fd / "gap_density.pdf")
     plot_hqe_full(plt, hqe_full, fd / "hqe_inclusive_density.pdf")
-    plot_hqe_vs_stack(plt, cfg, T, hqe_full, fd / "hqe_vs_sem_stack.pdf")
+    plot_hqe_vs_stack(plt, T, hqe_full, local["data"]["stack_smoothing"], fd / "hqe_vs_sem_stack.pdf")
 
     summary = dict(
         joint={o: {k: v for k, v in r.items() if k not in ("x", "f", "band")} for o, r in joint.items()},

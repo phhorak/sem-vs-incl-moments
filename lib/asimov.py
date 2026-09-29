@@ -59,3 +59,14 @@ def support(groups: list[dict]) -> dict[str, tuple[float, float]]:
     cat = {k: np.concatenate([g[k] for g in groups]) for k in ("mx2", "el", "q2")}
     return {"mx2": (cat["mx2"].min() * 0.999, cat["mx2"].max() * 1.001),
             "el": (0.0, cat["el"].max() * 1.001), "q2": (0.0, cat["q2"].max() * 1.001)}
+
+
+def smooth_truth(h, sigma_bins, finite_lo=False):
+    """Gaussian smoothing that keeps the endpoint behaviour: odd reflection where the density
+    vanishes (forces zero at the edge), even reflection where it is finite (q2 -> 0)."""
+    from scipy.ndimage import gaussian_filter1d
+    n = min(int(4 * sigma_bins) + 1, len(h) - 1)
+    lo = h[1:n + 1][::-1] * (1 if finite_lo else -1)
+    hi = -h[-n - 1:-1][::-1]
+    s = gaussian_filter1d(np.concatenate([lo, h, hi]), sigma_bins, mode="constant")[n:n + len(h)]
+    return np.clip(s, 0.0, None)
