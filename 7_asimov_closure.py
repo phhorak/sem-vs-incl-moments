@@ -20,6 +20,8 @@ Usage:
   python3 7_asimov_closure.py --submit [--after JOB]      # inversion jobs + dependent plot job (LSF)
   python3 7_asimov_closure.py --invert SCENARIO SOURCE
   python3 7_asimov_closure.py --plot
+  python3 7_asimov_closure.py --thresholds [--n-toys 1000]  # optional: the data procedure (thresholds,
+                                                          # joint fit) on Asimov pseudo-data; reads the MC samples
 Outputs go to <output>/7 (the configured output directory, else ./output) and figures/7.
 """
 import argparse
@@ -144,6 +146,33 @@ def style(ax):
         sp.set_visible(True)
 
 
+def truth_display(cfg, truth, obs):
+    """The truth's components on the display binning, smoothed; single-hadron components in M_X
+    (width < 20 MeV) as (mass, weight) with is_line True."""
+    edges = truth[f"{obs}_edges"]
+    sig = cfg["asimov"]["truth_smoothing"]["mx" if obs == "mx2" else obs] / (edges[1] - edges[0])
+    dens, delta = [], []
+    for i, (wsum, mu, sd) in enumerate(truth["stats"]):
+        delta.append(obs == "mx2" and sd < 0.02)
+        h = truth[f"{obs}_dens"][i]
+        dens.append((mu, wsum) if delta[-1] else smooth_truth(h, sig, finite_lo=obs == "q2"))
+    return edges, dens, delta
+
+
+def draw_truth(ax, edges, dens, delta, legends, ytop):
+    """Stacked truth components, single-hadron components as lines."""
+    centers = 0.5 * (edges[1:] + edges[:-1])
+    base = np.zeros_like(centers)
+    for i, (d, dl) in enumerate(zip(dens, delta)):
+        if dl:
+            ax.vlines(d[0], 0, ytop, color=COMP_COLORS[i], lw=3.5, alpha=0.9, label=legends[i])
+            continue
+        ax.fill_between(centers, base, base + d, color=COMP_COLORS[i], alpha=0.55, lw=0, label=legends[i])
+        base = base + d
+    ax.plot(centers, base, color="0.25", lw=0.9)
+    return centers, base
+
+
 class Panels:
     """Everything one scenario's figures need, in display coordinates (Mx rather than Mx2)."""
 
@@ -180,15 +209,7 @@ class Panels:
                     bands[src] = {N: dict(pct=B[f"pct_{obs}_N{N}"] * jac, haus=B[f"haus_{obs}_N{N}"],
                                           nconv=int(B[f"nconv_{obs}_N{N}"]), err=B[f"err_{obs}_N{N}"])
                                   for N in all_n(mc) if f"pct_{obs}_N{N}" in B}
-            # truth: stacked, smoothed components (single-hadron components drawn as a line)
-            edges = truth[f"{obs}_edges"]
-            db = edges[1] - edges[0]
-            sig = cfg["asimov"]["truth_smoothing"]["mx" if obs == "mx2" else obs]
-            dens, delta = [], []
-            for i, (wsum, mu, sd) in enumerate(truth["stats"]):
-                delta.append(obs == "mx2" and sd < 0.02)
-                h = truth[f"{obs}_dens"][i]
-                dens.append((mu, wsum) if delta[-1] else smooth_truth(h, sig / db, finite_lo=obs == "q2"))
+            edges, dens, delta = truth_display(cfg, truth, obs)
             # L1 distance to the truth, on the reconstruction variable (Mx2, El, q2)
             h_x = truth[f"{obs}_l1"]
             e_x = np.linspace(lo, hi, len(h_x) + 1)
@@ -212,18 +233,9 @@ class Panels:
 
     def draw(self, axes, obs, band, Ns, headroom=1.65):
         D = self.d[obs]
-        centers = 0.5 * (D["edges"][1:] + D["edges"][:-1])
         ytop = headroom * self.ymax(obs, Ns)
         for ax, N in zip(axes.flat, Ns):
-            base = np.zeros_like(centers)
-            for i, (d, dl) in enumerate(zip(D["dens"], D["delta"])):
-                if dl:
-                    ax.vlines(d[0], 0, ytop, color=COMP_COLORS[i], lw=3.5, alpha=0.9, label=self.legends[i])
-                    continue
-                ax.fill_between(centers, base, base + d, color=COMP_COLORS[i], alpha=0.55, lw=0,
-                                label=self.legends[i])
-                base = base + d
-            ax.plot(centers, base, color="0.25", lw=0.9)
+            draw_truth(ax, D["edges"], D["dens"], D["delta"], self.legends, ytop)
             c = D["curves"][N]
             if band and N in D["bands"].get("total", {}):
                 b = D["bands"]["total"][N]
@@ -398,6 +410,192 @@ def write_tex(summary, path):
     Path(path).write_text("\n".join(lines) + "\n")
 
 
+# ── Threshold closure: the data procedure on Asimov pseudo-data ─────────────────
+
+THR_OBS = {"Mx": ("el", "mx2"), "El": ("el", "el"), "Q2": ("q2", "q2")}   # (cut variable, moment variable)
+FIT_COLOR, HQE_COLOR = "black", "#d62728"   # truth components use the blue
+
+
+def above(sel, x, w, thr):
+    """Per threshold t: fraction of the weight with sel > t, and the raw moments 1-3 of x there
+    (zero where nothing survives; they then enter with zero weight)."""
+    out = np.zeros((len(thr), 4))
+    for i, t in enumerate(thr):
+        m = sel > t
+        wm, xm = w[m], x[m]
+        if wm.sum() > 0:
+            out[i] = [wm.sum() / w.sum(), *(np.dot(wm, xm ** k) / wm.sum() for k in (1, 2, 3))]
+    return out
+
+
+def asimov_residuals(cfg, T, B, scen, groups, ck):
+    """Residual moments at the data thresholds, formed as on data: the pseudo-inclusive moments
+    mix cocktail and truth with their true survival fractions above each threshold, the subtraction
+    uses the constant c_true, and the toys carry the experimental-average, SEM and B_gap
+    fluctuations of the data toys ("all"). Returns ({obs: R as B.residual}, {obs: true gap moments})."""
+    sysc, bf_gap = cfg["systematics"], float(T["bf_gap"])
+    f, c0, cz = bf_gap / sysc["bf_incl"], float(c_true(sysc, bf_gap)), c_true(sysc, bf_gap, T["z_gap"])[:, None, None]
+    tr = {k: np.concatenate([g[k] for g in groups]) for k in ("mx2", "el", "q2", "w")}
+    res, truth_m = {}, {}
+    for o, (cut, var) in THR_OBS.items():
+        D = B.residual(o, "all")
+        thr, sem = D["thr"], T[f"nom_sem_{o}"]
+        s_, g_ = above(ck[cut], ck[var], ck["w"], thr), above(tr[cut], tr[var], tr["w"], thr)
+        dev = np.max(np.abs(s_[:, 1:] / sem - 1))
+        assert dev < 1e-6, f"cocktail moments above threshold differ from step 6 by {dev:.1e}"
+        S, G = (1 - f) * s_[:, :1], f * g_[:, :1]
+        incl = (S * s_[:, 1:] + G * g_[:, 1:]) / (S + G)
+        exp_nom = (D["nominal"].reshape(-1, 3) + (c0 - 1) * sem) / c0
+        toys = cz * (incl + T[f"exp_{o}"] - exp_nom) - (cz - 1) * T[f"sem_{o}_stat_ff_bfmode"]
+        toys = toys.reshape(len(toys), -1)
+        res[o] = dict(nominal=(c0 * incl - (c0 - 1) * sem).reshape(-1), toys=toys,
+                      cov=np.cov(toys, rowvar=False), thr=thr)
+        truth_m[o] = dict(moments=g_[:, 1:].reshape(-1), survival=g_[:, 0])
+    return res, truth_m
+
+
+def zero_threshold(cfg, T, dev, scen, n_toys, rng, N=3):
+    """Route (ii) as on data: exact inversion of the orders 1..N at threshold 0 on the data
+    support, band from the "total" toys (inclusive moments varied with the HQE-fit toys)."""
+    mc, sup = cfg["maxent"], cfg["data"]["support"]
+    solver = MaxEnt(np.linspace(0, 1, 400), mom_tol=mc["mom_tol"])
+    nom, toys = residual(cfg, T, dev, scen, None), residual(cfg, T, dev, scen, "total")
+    idx = rng.choice(len(toys), min(n_toys, len(toys)), replace=False)
+    out = {}
+    for obs in OBS:
+        lo, hi = sup[obs]
+        a, b = mc["alpha"][obs], mc["beta"][obs]
+
+        def invert(raw):
+            m = mu01(raw, obs, sup)[:N + 1]
+            if not hausdorff_check(m)[0]:
+                return None
+            r = solver.solve(m, a, b)
+            return r.f / (hi - lo) if r.converged else None
+
+        curves = [c for c in (invert(toys[i]) for i in idx) if c is not None]
+        out[obs] = dict(x=lo + solver.t * (hi - lo), f=invert(nom), frac=len(curves) / len(idx),
+                        band=np.percentile(curves, [16, 84], axis=0) if len(curves) > 10 else None)
+    return out
+
+
+def run_thresholds(B, n_toys, seed, truth_support=False):
+    """Asimov closure of the full data procedure (joint fit, per-threshold Mx fits, threshold-0
+    inversion) for every scenario. Reads the cocktail and gap-mode samples."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import plothist  # noqa: F401  (house style)
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    from lib.asimov import truth_groups
+    from lib.jointfit import joint_fit, mx_fits
+    from lib.systematics import read_parquet_downcast
+
+    cfg, T, dev = load(B)
+    here_cfg = yaml.safe_load(open(HERE / "config.yaml"))
+    df = read_parquet_downcast(Path(here_cfg["paths"]["output"]) / "3" / "cocktail.parquet",
+                               ["Mx", "El_B", "q2", "total_weight", "decay_name"])
+    df = df[np.isfinite(df[["Mx", "El_B", "q2", "total_weight"]].to_numpy(float)).all(axis=1) & (df["total_weight"] > 0)]
+    ck = dict(mx2=df["Mx"].to_numpy(float) ** 2, el=df["El_B"].to_numpy(float), q2=df["q2"].to_numpy(float),
+              w=df["total_weight"].to_numpy(float), codes=df["decay_name"].cat.codes.to_numpy(),
+              cats=np.asarray(df["decay_name"].cat.categories, dtype=str))
+    del df
+    summary = {}
+    for scen in cfg["asimov"]["scenarios"]:
+        rng = np.random.default_rng(seed)
+        groups = truth_groups(cfg, scen, ck)
+        R, truth_m = asimov_residuals(cfg, T, B, scen, groups, ck)
+        print(f"[{scen}] residuals formed; truth survives the highest thresholds with "
+              + ", ".join(f"{o} {truth_m[o]['survival'][-1]:.3f}" for o in R), flush=True)
+        c = cfg
+        if truth_support:   # the truth's own support instead of the global data support
+            sup = scenario_support(T, scen)
+            c = {**cfg, "data": {**cfg["data"], "support": sup}}
+            for o in R:     # thresholds at or beyond the support's upper edge keep nothing of the truth
+                keep = np.asarray(R[o]["thr"]) < sup[THR_OBS[o][0]][1]
+                k3 = np.repeat(keep, 3)
+                R[o] = dict(nominal=R[o]["nominal"][k3], toys=R[o]["toys"][:, k3],
+                            cov=R[o]["cov"][np.ix_(k3, k3)], thr=list(np.asarray(R[o]["thr"])[keep]))
+                truth_m[o] = dict(moments=truth_m[o]["moments"][k3], survival=truth_m[o]["survival"][keep])
+            print(f"[{scen}] truth support " + ", ".join(f"{o} [{lo:.2f}, {hi:.2f}]" for o, (lo, hi) in sup.items())
+                  + "; thresholds kept " + ", ".join(f"{o} {len(r['thr'])}" for o, r in R.items()), flush=True)
+        joint = {o: joint_fit(c, o, R[o], n_toys, rng) for o in ("El", "Q2")}
+        mx = mx_fits(c, R["Mx"], n_toys, rng)
+        hqe = zero_threshold(c, T, dev, scen, n_toys, rng)
+        # the q2 fit describes q2 above its lowest threshold: scale it to the truth's share there
+        q2_share = float(sum(g["w"][g["q2"] > joint["Q2"]["lo"]].sum() for g in groups))
+        summary[scen] = {
+            "joint": {o: dict(chi2=r["chi2"], dof=r["dof"], n_ok=r["n_ok"], n_toys=r["n_toys"]) for o, r in joint.items()},
+            "mx_chi2": {f"{t:.2f}": r["chi2"] for t, r in mx.items()},
+            "zero_threshold_admissible": {o: r["frac"] for o, r in hqe.items()},
+            "constant_c_bias_rel": {o: np.round(np.divide(R[o]["nominal"] - truth_m[o]["moments"], truth_m[o]["moments"],
+                                                      out=np.full(len(R[o]["thr"]) * 3, np.nan),
+                                                      where=truth_m[o]["moments"] != 0), 4).tolist() for o in R},
+            "q2_share_above_fit_start": q2_share}
+        print(f"[{scen}] joint chi2/ndf " + ", ".join(f"{o} {r['chi2']:.1f}/{r['dof']}" for o, r in joint.items())
+              + "; threshold-0 admissible " + ", ".join(f"{o} {r['frac']:.0%}" for o, r in hqe.items()), flush=True)
+
+        truth = B.truth(scen)
+        legends = [c["legend"] for c in cfg["asimov"]["scenarios"][scen]["components"]]
+        fig, axes = plt.subplots(1, 3, figsize=(24, 7.2), dpi=200)
+        for ax, obs in zip(axes, OBS):
+            edges, dens, delta = truth_display(cfg, truth, obs)
+            ytop = 1.6 * max([float(np.max(sum(d for d, dl in zip(dens, delta) if not dl)))]
+                             + [float(np.max(r["f"] * (2 * np.sqrt(r["x"]) if obs == "mx2" else 1)))
+                                for r in (list(mx.values()) if obs == "mx2" else [joint["El" if obs == "el" else "Q2"]])])
+            draw_truth(ax, edges, dens, delta, legends, ytop)
+            h = hqe[obs]
+            jac = 2 * np.sqrt(h["x"]) if obs == "mx2" else 1.0
+            xd = np.sqrt(h["x"]) if obs == "mx2" else h["x"]
+            if h["band"] is not None:
+                ax.fill_between(xd, h["band"][0] * jac, h["band"][1] * jac, color=HQE_COLOR, alpha=0.25, lw=0)
+            if h["f"] is not None:
+                ax.plot(xd, h["f"] * jac, color=HQE_COLOR, lw=2.6)
+            if obs == "mx2":
+                cmap = plt.get_cmap("viridis")
+                norm = mpl.colors.Normalize(min(mx), max(mx))
+                for t, r in sorted(mx.items()):
+                    ax.plot(np.sqrt(r["x"]), r["f"] * 2 * np.sqrt(r["x"]), color=cmap(norm(t)), lw=1.6, alpha=0.9)
+                cax = ax.inset_axes([0.55, 0.9, 0.4, 0.04])
+                cb = fig.colorbar(mpl.cm.ScalarMappable(norm, cmap), cax=cax, orientation="horizontal")
+                cb.set_label(r"$E_\ell$ cut [GeV]", fontsize=16)
+                cb.ax.tick_params(labelsize=14)
+                ax.set_xlim(*truth["mxrange"])
+            else:
+                j = joint["El" if obs == "el" else "Q2"]
+                s_ = q2_share if obs == "q2" else 1.0
+                if j["band"] is not None:
+                    ax.fill_between(j["x"], j["band"][0] * s_, j["band"][1] * s_, color=FIT_COLOR, alpha=0.3, lw=0)
+                ax.plot(j["x"], j["f"] * s_, color=FIT_COLOR, lw=2.6)
+                ax.text(0.06, 0.94, rf"$\chi^2/\mathrm{{ndf}} = {j['chi2']:.1f}/{j['dof']}$", transform=ax.transAxes,
+                        fontsize=20, color=FIT_COLOR, ha="left", va="top")
+                ax.set_xlim(*c["data"]["support"][obs])
+            ax.text(0.94, 0.80 if obs == "mx2" else 0.94, f"threshold 0: admissible {h['frac']:.0%}",
+                    transform=ax.transAxes, fontsize=16, color=HQE_COLOR, ha="right", va="top")
+            ax.set_ylim(0, ytop)
+            ax.set_xlabel(XLABEL[obs], fontsize=FS_LABEL)
+            ax.set_ylabel(YLABEL[obs], fontsize=FS_LABEL)
+            style(ax)
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+        handles = [Patch(color=COMP_COLORS[i], alpha=0.55, lw=0, label=l) for i, l in enumerate(legends)]
+        handles += [Line2D([], [], color=FIT_COLOR, lw=2.6, label=r"Joint $\chi^2$ fit"),
+                    Line2D([], [], color="0.35", lw=1.6, label=r"Per-$E_\ell$-cut fits ($M_X$)"),
+                    Line2D([], [], color=HQE_COLOR, lw=2.6, label=r"Threshold-0 inversion ($N=3$)"),
+                    Patch(color="0.5", alpha=0.3, lw=0, label="68% (toys)")]
+        fig.legend(handles=handles, loc="lower center", ncol=len(handles), frameon=False, fontsize=18,
+                   bbox_to_anchor=(0.5, -0.11), handlelength=1.8)
+        fig.tight_layout()
+        d = HERE / "figures" / "7" / scen
+        d.mkdir(parents=True, exist_ok=True)
+        name = "thresholds_all3_truthsupport.pdf" if truth_support else "thresholds_all3.pdf"
+        fig.savefig(d / name, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  -> {d / name}", flush=True)
+    OUT.mkdir(parents=True, exist_ok=True)
+    json.dump(summary, open(OUT / f"thresholds_summary{'_truthsupport' if truth_support else ''}.json", "w"), indent=1)
+
+
 # ── Submit ───────────────────────────────────────────────────────────────────
 
 def run_submit(cfg, bundle, dry_run, after=None):
@@ -424,10 +622,19 @@ def main():
     p.add_argument("--invert", nargs=2, metavar=("SCENARIO", "SOURCE"))
     p.add_argument("--plot", action="store_true")
     p.add_argument("--after", help="LSF job name the submitted jobs wait for")
+    p.add_argument("--thresholds", action="store_true",
+                   help="optional: the data procedure (thresholds, joint fit) on Asimov pseudo-data; reads the MC samples")
+    p.add_argument("--n-toys", type=int, default=1000, help="toys refit for the --thresholds bands")
+    p.add_argument("--truth-support", action="store_true",
+                   help="with --thresholds: map onto each truth's own support instead of the data support")
+    p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
     bundle = Path(args.bundle) if args.bundle else default_path(HERE)
     if args.submit:
         run_submit(yaml.safe_load(open(HERE / "config.yaml")), bundle.resolve(), args.dry_run, args.after)
+        return
+    if args.thresholds:
+        run_thresholds(Bundle(bundle), args.n_toys, args.seed, args.truth_support)
         return
     if not (args.run or args.invert or args.plot):
         p.print_help()

@@ -23,147 +23,46 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 import numpy as np
 import yaml
-from scipy.optimize import minimize
 
 HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
 from lib.asimov import MAX_ORDER, smooth_truth
-from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01, raw_to_mu01_jacobian
+from lib.jointfit import VAR, M_JOINT, JointFit, band, joint_fit, mx_fits
+from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01
 from lib.bundle import Bundle, default_path, output_root
 from lib.systematics import c_true, write_budget_tex
 
 SOURCES = ["stat_ff", "stat_bfmode", "stat_ff_bfmode", "all"]
 OBS = ["Mx", "El", "Q2"]
-VAR = {"Mx": "mx2", "El": "el", "Q2": "q2"}
-M_JOINT, M_MX = 6, 2
-L2 = 1e-4          # guards the flat chi2 directions of the 1-threshold Mx fits
-BAD_CLOSURE = 0.3  # a toy refit this far from its target sits in a degenerate basin
-
-
-# ── Joint chi2 fit ───────────────────────────────────────────────────────────
-
-class JointFit:
-    """chi2 fit of one density to the conditional moments (orders 1-3) at several thresholds."""
-
-    def __init__(self, cfg, obs, thresholds, cov_raw, masked, lo, hi, t_n=400):
-        mc = cfg["maxent"]
-        self.lo, self.hi, self.span = lo, hi, hi - lo
-        self.thr = list(thresholds)
-        self.t = np.linspace(0, 1, t_n)
-        a, b = mc["alpha"][VAR[obs]], mc["beta"][VAR[obs]]
-        self.prior = np.maximum(self.t, 1e-300) ** a * np.maximum(1 - self.t, 1e-300) ** b
-        self.tp = np.stack([self.t ** k for k in range(1, M_JOINT + 1)])
-        self.masks = np.stack([(self.t >= (thr - lo) / self.span) if masked else np.ones_like(self.t)
-                               for thr in self.thr]).astype(float)
-        self.Cinv = self._cinv(cov_raw)
-
-    def _cinv(self, cov_raw):
-        """Raw covariance -> [0,1]-moment space, eigenvalues floored at 1e-3 of the largest."""
-        n = len(self.thr)
-        if cov_raw is None:
-            return np.eye(3 * n)
-        J = raw_to_mu01_jacobian(self.lo, self.hi, 4)[1:, 1:]
-        B = np.kron(np.eye(n), J)
-        w, v = np.linalg.eigh(B @ cov_raw @ B.T)
-        return (v / np.maximum(w, 1e-3 * w.max())) @ v.T
-
-    def target(self, raw_gap):
-        return np.concatenate([raw_to_mu01(np.r_[1.0, raw_gap[3 * i:3 * i + 3]], self.lo, self.hi)[1:]
-                               for i in range(len(self.thr))])
-
-    def density(self, c, M):
-        e = c @ self.tp[:M]
-        return self.prior * np.exp(e - e.max())
-
-    def model(self, c, M):
-        f = self.density(c, M) * self.masks
-        Z = np.trapz(f, self.t, axis=1)
-        return np.stack([np.trapz(self.t ** k * f, self.t, axis=1) / Z for k in (1, 2, 3)], 1).reshape(-1)
-
-    def chi2(self, c, target, M):
-        r = self.model(c, M) - target
-        return float(r @ self.Cinv @ r)
-
-    def fit(self, raw_gap, M, c0=None):
-        target = self.target(raw_gap)
-        obj = lambda c: self.chi2(c, target, M) + L2 * float(c @ c)
-        if c0 is not None:
-            c = minimize(obj, c0, method="BFGS", options={"maxiter": 2000, "gtol": 1e-8}).x
-            if np.max(np.abs(self.model(c, M) - target)) <= BAD_CLOSURE:
-                return c, True
-        nm = minimize(obj, np.zeros(M), method="Nelder-Mead",
-                      options={"maxiter": 30000, "xatol": 1e-10, "fatol": 1e-12, "adaptive": True})
-        bf = minimize(obj, nm.x, method="BFGS", options={"maxiter": 5000, "gtol": 1e-10})
-        c = bf.x if bf.fun < nm.fun else nm.x
-        return c, bool(np.max(np.abs(self.model(c, M) - target)) <= BAD_CLOSURE)
-
-    def f_phys(self, c, M):
-        f = self.density(c, M)
-        return f / np.trapz(f, self.t) / self.span
-
-    @property
-    def x(self):
-        return self.lo + self.t * self.span
-
-
-def band(curves):
-    curves = np.asarray(curves)
-    return np.percentile(curves, [16, 84], axis=0) if len(curves) > 10 else None
-
+# ── Joint and per-threshold fits (lib/jointfit, shared with step 7) ─────────────
 
 def joint_results(cfg, B, n_toys, rng):
-    sup, res = cfg["data"]["support"], {}
+    res = {}
     for obs in ("El", "Q2"):
-        lo, hi = sup[VAR[obs]]
-        if obs == "Q2":
-            lo = cfg["data"]["joint_fit_q2_lo"]
         R = B.residual(obs, "all")
-        jf = JointFit(cfg, obs, R["thr"], R["cov"], True, lo, hi)
-        c_best, _ = jf.fit(R["nominal"], M_JOINT)
-        chi2 = jf.chi2(c_best, jf.target(R["nominal"]), M_JOINT)
-        dof = 3 * len(R["thr"]) - M_JOINT
-        asimov = JointFit(cfg, obs, R["thr"], None, True, lo, hi)
+        r = joint_fit(cfg, obs, R, n_toys, rng)
+        asimov = JointFit(cfg, obs, R["thr"], None, True, r["lo"], r["hi"])
         c_a, _ = asimov.fit(R["nominal"], M_JOINT)
         per_source = {}
         for src in SOURCES:
             S = B.residual(obs, src)
-            j = JointFit(cfg, obs, S["thr"], S["cov"], True, lo, hi)
+            j = JointFit(cfg, obs, S["thr"], S["cov"], True, r["lo"], r["hi"])
             c, _ = j.fit(S["nominal"], M_JOINT)
-            per_source[src] = j.chi2(c, j.target(S["nominal"]), M_JOINT) / dof
-        toys = R["toys"]
-        idx = rng.choice(len(toys), min(n_toys, len(toys)), replace=False)
-        t0, curves = time.time(), []
-        for i in idx:
-            c, ok = jf.fit(toys[i], M_JOINT, c0=c_best)
-            if ok:
-                curves.append(jf.f_phys(c, M_JOINT))
-        print(f"[{obs}] joint fit chi2/ndf = {chi2:.1f}/{dof}; {len(curves)}/{len(idx)} toys refit "
-              f"in {time.time() - t0:.0f}s; per source {per_source}", flush=True)
-        res[obs] = dict(x=jf.x, f=jf.f_phys(c_best, M_JOINT), band=band(curves), chi2=chi2, dof=dof,
-                        asimov_chi2=asimov.chi2(c_a, asimov.target(R["nominal"]), M_JOINT),
-                        chi2_per_dof_by_source=per_source, n_toys=len(idx), n_ok=len(curves))
+            per_source[src] = j.chi2(c, j.target(S["nominal"]), M_JOINT) / r["dof"]
+        print(f"[{obs}] joint fit chi2/ndf = {r['chi2']:.1f}/{r['dof']}; {r['n_ok']}/{r['n_toys']} toys refit "
+              f"in {r['seconds']:.0f}s; per source {per_source}", flush=True)
+        res[obs] = r | dict(asimov_chi2=asimov.chi2(c_a, asimov.target(R["nominal"]), M_JOINT),
+                            chi2_per_dof_by_source=per_source)
     return res
 
 
 def mx_results(cfg, B, n_toys, rng):
-    lo, hi = cfg["data"]["support"]["mx2"]
-    R = B.residual("Mx", "all")
-    toys = R["toys"]
-    idx = rng.choice(len(toys), min(n_toys, len(toys)), replace=False)
-    out = {}
-    for i, thr in enumerate(R["thr"]):
-        s = slice(3 * i, 3 * i + 3)
-        jf = JointFit(cfg, "Mx", [thr], R["cov"][s, s], False, lo, hi)
-        c_best, _ = jf.fit(R["nominal"][s], M_MX)
-        curves = [jf.f_phys(c, M_MX) for c, ok in (jf.fit(toys[j, s], M_MX, c0=c_best) for j in idx) if ok]
-        out[thr] = dict(x=jf.x, f=jf.f_phys(c_best, M_MX), band=band(curves),
-                        chi2=jf.chi2(c_best, jf.target(R["nominal"][s]), M_MX))
+    out = mx_fits(cfg, B.residual("Mx", "all"), n_toys, rng)
     print(f"[Mx] {len(out)} per-threshold fits", flush=True)
     return out
 
@@ -461,7 +360,8 @@ def run(B, n_toys, seed):
     plot_hqe_vs_stack(plt, T, hqe_full, local["data"]["stack_smoothing"], fd / "hqe_vs_sem_stack.pdf")
 
     summary = dict(
-        joint={o: {k: v for k, v in r.items() if k not in ("x", "f", "band")} for o, r in joint.items()},
+        joint={o: {k: v for k, v in r.items() if k not in ("x", "f", "band", "lo", "hi", "seconds")}
+               for o, r in joint.items()},
         mx={f"{t:.2f}": dict(chi2=r["chi2"]) for t, r in mx.items()},
         hqe_gap={o: {k: r[k] for k in ("hausdorff_frac", "converged_frac")} | {"central_ok": r["f"] is not None}
                  for o, r in hqe_gap.items()},
