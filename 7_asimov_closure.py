@@ -479,9 +479,10 @@ def zero_threshold(cfg, T, dev, scen, n_toys, rng, N=3):
     return out
 
 
-def run_thresholds(B, n_toys, seed, truth_support=False):
+def run_thresholds(B, n_toys, seed, truth_support=False, joint_on=True):
     """Asimov closure of the full data procedure (joint fit, per-threshold Mx fits, threshold-0
-    inversion) for every scenario. Reads the cocktail and gap-mode samples."""
+    inversion) for every scenario; joint_on=False: threshold-0 inversion only. Reads the cocktail
+    and gap-mode samples."""
     import matplotlib
     matplotlib.use("Agg")
     import plothist  # noqa: F401  (house style)
@@ -519,30 +520,33 @@ def run_thresholds(B, n_toys, seed, truth_support=False):
                 truth_m[o] = dict(moments=truth_m[o]["moments"][k3], survival=truth_m[o]["survival"][keep])
             print(f"[{scen}] truth support " + ", ".join(f"{o} [{lo:.2f}, {hi:.2f}]" for o, (lo, hi) in sup.items())
                   + "; thresholds kept " + ", ".join(f"{o} {len(r['thr'])}" for o, r in R.items()), flush=True)
-        joint = {o: joint_fit(c, o, R[o], n_toys, rng) for o in ("El", "Q2")}
-        mx = mx_fits(c, R["Mx"], n_toys, rng)
+        joint = {o: joint_fit(c, o, R[o], n_toys, rng) for o in ("El", "Q2")} if joint_on else {}
+        mx = mx_fits(c, R["Mx"], n_toys, rng) if joint_on else {}
         hqe = zero_threshold(c, T, dev, scen, n_toys, rng)
-        # the q2 fit describes q2 above its lowest threshold: scale it to the truth's share there
-        q2_share = float(sum(g["w"][g["q2"] > joint["Q2"]["lo"]].sum() for g in groups))
         summary[scen] = {
-            "joint": {o: dict(chi2=r["chi2"], dof=r["dof"], n_ok=r["n_ok"], n_toys=r["n_toys"]) for o, r in joint.items()},
-            "mx_chi2": {f"{t:.2f}": r["chi2"] for t, r in mx.items()},
             "zero_threshold_admissible": {o: r["frac"] for o, r in hqe.items()},
             "constant_c_bias_rel": {o: np.round(np.divide(R[o]["nominal"] - truth_m[o]["moments"], truth_m[o]["moments"],
                                                       out=np.full(len(R[o]["thr"]) * 3, np.nan),
-                                                      where=truth_m[o]["moments"] != 0), 4).tolist() for o in R},
-            "q2_share_above_fit_start": q2_share}
-        print(f"[{scen}] joint chi2/ndf " + ", ".join(f"{o} {r['chi2']:.1f}/{r['dof']}" for o, r in joint.items())
-              + "; threshold-0 admissible " + ", ".join(f"{o} {r['frac']:.0%}" for o, r in hqe.items()), flush=True)
+                                                      where=truth_m[o]["moments"] != 0), 4).tolist() for o in R}}
+        if joint_on:
+            # the q2 fit describes q2 above its lowest threshold: scale it to the truth's share there
+            q2_share = float(sum(g["w"][g["q2"] > joint["Q2"]["lo"]].sum() for g in groups))
+            summary[scen] |= {
+                "joint": {o: dict(chi2=r["chi2"], dof=r["dof"], n_ok=r["n_ok"], n_toys=r["n_toys"]) for o, r in joint.items()},
+                "mx_chi2": {f"{t:.2f}": r["chi2"] for t, r in mx.items()}, "q2_share_above_fit_start": q2_share}
+            print(f"[{scen}] joint chi2/ndf " + ", ".join(f"{o} {r['chi2']:.1f}/{r['dof']}" for o, r in joint.items()),
+                  flush=True)
+        print(f"[{scen}] threshold-0 admissible " + ", ".join(f"{o} {r['frac']:.0%}" for o, r in hqe.items()), flush=True)
 
         truth = B.truth(scen)
         legends = [c["legend"] for c in cfg["asimov"]["scenarios"][scen]["components"]]
         fig, axes = plt.subplots(1, 3, figsize=(24, 7.2), dpi=200)
         for ax, obs in zip(axes, OBS):
             edges, dens, delta = truth_display(cfg, truth, obs)
+            fits = (list(mx.values()) if obs == "mx2" else [joint["El" if obs == "el" else "Q2"]]) if joint_on \
+                else [r for r in [hqe[obs]] if r["f"] is not None]
             ytop = 1.6 * max([float(np.max(sum(d for d, dl in zip(dens, delta) if not dl)))]
-                             + [float(np.max(r["f"] * (2 * np.sqrt(r["x"]) if obs == "mx2" else 1)))
-                                for r in (list(mx.values()) if obs == "mx2" else [joint["El" if obs == "el" else "Q2"]])])
+                             + [float(np.max(r["f"] * (2 * np.sqrt(r["x"]) if obs == "mx2" else 1))) for r in fits])
             draw_truth(ax, edges, dens, delta, legends, ytop)
             h = hqe[obs]
             jac = 2 * np.sqrt(h["x"]) if obs == "mx2" else 1.0
@@ -551,7 +555,9 @@ def run_thresholds(B, n_toys, seed, truth_support=False):
                 ax.fill_between(xd, h["band"][0] * jac, h["band"][1] * jac, color=HQE_COLOR, alpha=0.25, lw=0)
             if h["f"] is not None:
                 ax.plot(xd, h["f"] * jac, color=HQE_COLOR, lw=2.6)
-            if obs == "mx2":
+            if not joint_on:
+                ax.set_xlim(*(truth["mxrange"] if obs == "mx2" else c["data"]["support"][obs]))
+            elif obs == "mx2":
                 cmap = plt.get_cmap("viridis")
                 norm = mpl.colors.Normalize(min(mx), max(mx))
                 for t, r in sorted(mx.items()):
@@ -579,9 +585,10 @@ def run_thresholds(B, n_toys, seed, truth_support=False):
         from matplotlib.lines import Line2D
         from matplotlib.patches import Patch
         handles = [Patch(color=COMP_COLORS[i], alpha=0.55, lw=0, label=l) for i, l in enumerate(legends)]
-        handles += [Line2D([], [], color=FIT_COLOR, lw=2.6, label=r"Joint $\chi^2$ fit"),
-                    Line2D([], [], color="0.35", lw=1.6, label=r"Per-$E_\ell$-cut fits ($M_X$)"),
-                    Line2D([], [], color=HQE_COLOR, lw=2.6, label=r"Threshold-0 inversion ($N=3$)"),
+        if joint_on:
+            handles += [Line2D([], [], color=FIT_COLOR, lw=2.6, label=r"Joint $\chi^2$ fit"),
+                        Line2D([], [], color="0.35", lw=1.6, label=r"Per-$E_\ell$-cut fits ($M_X$)")]
+        handles += [Line2D([], [], color=HQE_COLOR, lw=2.6, label=r"Threshold-0 inversion ($N=3$)"),
                     Patch(color="0.5", alpha=0.3, lw=0, label="68% (toys)")]
         fig.legend(handles=handles, loc="lower center", ncol=len(handles), frameon=False, fontsize=18,
                    bbox_to_anchor=(0.5, -0.11), handlelength=1.8)
@@ -627,14 +634,18 @@ def main():
     p.add_argument("--n-toys", type=int, default=1000, help="toys refit for the --thresholds bands")
     p.add_argument("--truth-support", action="store_true",
                    help="with --thresholds: map onto each truth's own support instead of the data support")
+    p.add_argument("--joint-fit", action=argparse.BooleanOptionalAction, default=None,
+                   help="with --thresholds: joint and per-cut fits on/off (default: config data.joint_fit)")
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
+    local = yaml.safe_load(open(HERE / "config.yaml"))
     bundle = Path(args.bundle) if args.bundle else default_path(HERE)
     if args.submit:
-        run_submit(yaml.safe_load(open(HERE / "config.yaml")), bundle.resolve(), args.dry_run, args.after)
+        run_submit(local, bundle.resolve(), args.dry_run, args.after)
         return
     if args.thresholds:
-        run_thresholds(Bundle(bundle), args.n_toys, args.seed, args.truth_support)
+        joint_on = local["data"].get("joint_fit", True) if args.joint_fit is None else args.joint_fit
+        run_thresholds(Bundle(bundle), args.n_toys, args.seed, args.truth_support, joint_on)
         return
     if not (args.run or args.invert or args.plot):
         p.print_help()

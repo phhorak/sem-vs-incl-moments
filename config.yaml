@@ -203,6 +203,10 @@ asimov:
 data:
   # Mx2 upper edge from the support scan; q2 upper edge = (M_B - M_D)^2
   support: {mx2: [3.2, 16.0], el: [0.0, 2.3], q2: [0.0, 11.7]}
+  # Joint chi2 fit to the threshold moments (El, q2) and per-El-cut Mx fits, next to the HQE
+  # threshold-0 inversion (steps 7 --thresholds and 8). Off: the residual uses one c = B_incl/B_gap
+  # at every threshold, which leaves SEM in it wherever the gap fraction drops above threshold.
+  joint_fit: false
   joint_fit_q2_lo: 1.5     # lowest measured q2 threshold; no data constrain the fit below it
   # Gaussian kernel of the SEM stack in step 8 [GeV, GeV, GeV^2]; narrower than
   # asimov.truth_smoothing, which is sized for the small gap-mode samples

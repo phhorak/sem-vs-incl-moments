@@ -4,14 +4,17 @@
   Joint fit     El, q2: one density f(t) ~ t^a (1-t)^b exp(sum_k c_k t^k) fit by chi2 to the
                 conditional residual moments at all thresholds, weighted by the step-6 covariance.
   Mx            separate fits per El threshold (Mx moments are El-selected sub-populations).
+                Both fits only with config data.joint_fit (or --joint-fit); off by default.
   HQE           exact Hausdorff + MaxEnt inversion of the HQE-fit moments at threshold 0
                 (Markus Prim's likelihood toys), with and without SEM subtraction.
   Feasibility   Hausdorff check + MaxEnt inversion per threshold (TeX table).
+  Gap modes     candidate gap-mode shapes (SHOW_MODES) drawn over the gap density.
 
 All bands are 68% toy intervals: the step-6 residual toys ("all" source: exp + SEM stat + FF +
 BF-mode + B_gap) refit per toy; for HQE, HQE toys paired with step-6 SEM toys.
 
-Everything is read from the step-6 bundle (lib/bundle.py); the MC samples are not needed.
+Everything is read from the step-6 bundle (lib/bundle.py); the MC samples are not needed, except
+the step-3 gap-mode samples for the gap-mode overlay (skipped where they are missing).
 
 Usage:
   python3 8_data_results.py [--bundle FILE] [--n-toys 1000]
@@ -31,7 +34,7 @@ import yaml
 
 HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(HERE))
-from lib.asimov import MAX_ORDER, smooth_truth
+from lib.asimov import COLS, MAX_ORDER, smooth_truth
 from lib.jointfit import VAR, M_JOINT, JointFit, band, joint_fit, mx_fits
 from lib.maxent import MaxEnt, hausdorff_check, raw_to_mu01
 from lib.bundle import Bundle, default_path, output_root
@@ -177,6 +180,68 @@ def write_feasibility_tex(rows, path):
     Path(path).write_text("\n".join(lines) + "\n")
 
 
+# ── Candidate gap modes ──────────────────────────────────────────────────────
+
+# (gap mode, legend, color, linestyle) drawn over the gap density in gap_density_modes.pdf
+SHOW_MODES = [("DsKenu", r"$D_sK$", "#6a3d9a", "--"),
+              ("Dp1DstEta", r"$D_1'\to D^*\eta$", "#b15928", "-."),
+              ("LcPenu", r"$\Lambda_c\bar{p}$", "#33a02c", ":"),
+              # Mx, El, q2 are set by B -> D1 l nu alone: the D1 -> D gamma sample stands for every D1 decay
+              ("D1Dgamma", r"$B\to D_1(2420)\ell\nu$", "#ff7f00", "-")]
+# (key, legend, color, linestyle, cocktail decays) SEM modes drawn for comparison in
+# gap_density_modes_El_q2.pdf; e and mu, B0 and B+
+COCKTAIL_MODES = [("Dlnu", r"$B\to D\ell\nu$", "#17becf", "-",
+                   ["Bp_Denu", "B0_Denu", "Bp_Dmunu", "B0_Dmunu"]),
+                  ("D0stlnu", r"$B\to D_0^*\ell\nu$", "#7f7f7f", "--",
+                   ["Bp_D0stenu", "B0_D0stenu", "Bp_D0stmunu", "B0_D0stmunu"])]
+MODE_BINS = {"Mx": 400, "El": 300, "Q2": 300}
+
+
+def shape(cfg, d, el_cut, q2_lo):
+    """Smoothed densities of one sample (B0 and B+ weighted equally), unit area on the data support:
+    Mx for El > el_cut, q2 above q2_lo. {obs: (x, f)}."""
+    sup, sm = cfg["data"]["support"], cfg["asimov"]["truth_smoothing"]
+    ranges = {"Mx": tuple(np.sqrt(sup["mx2"])), "El": tuple(sup["el"]), "Q2": (q2_lo, sup["q2"][1])}
+    d = d[np.isfinite(d[COLS[:4]].to_numpy(float)).all(axis=1) & (d["total_weight"] > 0)]
+    w = d["total_weight"].to_numpy(float).copy()
+    species = d["decay_name"].astype(str).str[:2].to_numpy()
+    for s in np.unique(species):
+        w[species == s] /= w[species == s].sum()
+    x = {"Mx": d["Mx"].to_numpy(float), "El": d["El_B"].to_numpy(float), "Q2": d["q2"].to_numpy(float)}
+    out = {}
+    for obs in OBS:
+        sel = x["El"] > el_cut if obs == "Mx" else slice(None)
+        h, e = np.histogram(x[obs][sel], MODE_BINS[obs], ranges[obs], weights=w[sel])
+        db = e[1] - e[0]
+        f = smooth_truth(h / db, sm[obs.lower()] / db, finite_lo=obs == "Q2")
+        out[obs] = (0.5 * (e[1:] + e[:-1]), f / (f.sum() * db))
+    print(f"[modes] {len(w)} events, species {sorted(np.unique(species))}", flush=True)
+    return out
+
+
+def mode_shapes(cfg, out3, el_cut, q2_lo, cocktail=False):
+    """shape() of the SHOW_MODES samples (step 3) and, with cocktail, of the COCKTAIL_MODES decays
+    of the SEM cocktail. {mode: {obs: (x, f)}}; missing samples are left out."""
+    import pandas as pd
+    out = {}
+    for mode, *_ in SHOW_MODES:
+        path = out3 / f"{mode}.parquet"
+        if not path.exists():
+            print(f"[modes] {path} missing, {mode} not drawn", flush=True)
+            continue
+        print(f"[modes] {mode}:", end=" ")
+        out[mode] = shape(cfg, pd.read_parquet(path, columns=COLS), el_cut, q2_lo)
+    path = out3 / "cocktail.parquet"
+    if cocktail and path.exists():
+        names = [n for *_, decays in COCKTAIL_MODES for n in decays]
+        ck = pd.read_parquet(path, columns=COLS, filters=[("decay_name", "in", names)])
+        ck["decay_name"] = ck["decay_name"].astype(str)
+        for key, *_, decays in COCKTAIL_MODES:
+            print(f"[modes] {key}:", end=" ")
+            out[key] = shape(cfg, ck[ck["decay_name"].isin(decays)], el_cut, q2_lo)
+    return out
+
+
 # ── Figures ──────────────────────────────────────────────────────────────────
 
 FIT_COLOR, HQE_COLOR = "#1f77b4", "#d62728"
@@ -230,22 +295,36 @@ def draw_curve(ax, x, f, bnd, color, obs, ls="-"):
     return x
 
 
+def peak(r, jac=1.0):
+    """Largest value of a curve and its band (empty if the curve is missing)."""
+    return [float(np.max(y * jac)) for y in [r["f"], *(r["band"] if r["band"] is not None else [])] if y is not None]
+
+
+def infeasible_note(ax, hqe_gap, y=0.74):
+    if hqe_gap["Mx"]["f"] is None:
+        ax.text(0.95, y, "HQE moments not\nHausdorff-feasible", transform=ax.transAxes,
+                fontsize=17, color=HQE_COLOR, ha="right", va="top")
+
+
 def plot_gap(plt, cfg, joint, mx, hqe_gap, path):
+    """HQE inversion, with the joint and per-El-cut fits where they were run (joint, mx non-empty)."""
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     import matplotlib as mpl
     fig, axes = figure(plt)
-    cmap, thrs = plt.get_cmap("viridis"), sorted(mx)
-    norm = mpl.colors.Normalize(min(thrs), max(thrs))
-    for thr in thrs:
-        m = mx[thr]
-        xg, fg = to_mx(m["x"], m["f"])
-        axes[0].plot(xg, fg, color=cmap(norm(thr)), lw=1.6, alpha=0.9)
-    cax = axes[0].inset_axes([0.55, 0.9, 0.4, 0.04])
-    cb = fig.colorbar(mpl.cm.ScalarMappable(norm, cmap), cax=cax, orientation="horizontal")
-    cb.set_label(r"$E_\ell$ cut [GeV]", fontsize=16)
-    cb.ax.tick_params(labelsize=14)
+    if mx:
+        cmap, thrs = plt.get_cmap("viridis"), sorted(mx)
+        norm = mpl.colors.Normalize(min(thrs), max(thrs))
+        for thr in thrs:
+            m = mx[thr]
+            xg, fg = to_mx(m["x"], m["f"])
+            axes[0].plot(xg, fg, color=cmap(norm(thr)), lw=1.6, alpha=0.9)
+        cax = axes[0].inset_axes([0.55, 0.9, 0.4, 0.04])
+        cb = fig.colorbar(mpl.cm.ScalarMappable(norm, cmap), cax=cax, orientation="horizontal")
+        cb.set_label(r"$E_\ell$ cut [GeV]", fontsize=16)
+        cb.ax.tick_params(labelsize=14)
     axes[0].set_xlim(1.75, 3.0)
+    sup = cfg["data"]["support"]
     for ax, obs in zip(axes, OBS):
         h = hqe_gap[obs]
         draw_curve(ax, h["x"], h["f"], h["band"], HQE_COLOR, obs)
@@ -254,19 +333,18 @@ def plot_gap(plt, cfg, joint, mx, hqe_gap, path):
             draw_curve(ax, j["x"], j["f"], j["band"], FIT_COLOR, obs)
             ax.text(0.06, 0.94, rf"$\chi^2/\mathrm{{ndf}} = {j['chi2']:.1f}/{j['dof']}$", transform=ax.transAxes,
                     fontsize=20, color=FIT_COLOR, ha="left", va="top")
-            ax.set_xlim(j["x"][0] if obs == "El" else 0.0, j["x"][-1])
-    if hqe_gap["Mx"]["f"] is None:
-        axes[0].text(0.95, 0.74, "HQE moments not\nHausdorff-feasible", transform=axes[0].transAxes,
-                     fontsize=17, color=HQE_COLOR, ha="right", va="top")
+        if obs != "Mx":
+            ax.set_xlim(*sup[VAR[obs]])
+    infeasible_note(axes[0], hqe_gap, 0.74 if mx else 0.94)
     sel = lambda x: (x >= 1.75) & (x <= 3.0)
-    ymx = max(float(np.max((m["f"] * 2 * np.sqrt(m["x"]))[sel(np.sqrt(m["x"]))])) for m in mx.values())
-    yel = max(np.max(v) for v in [joint["El"]["f"], hqe_gap["El"]["f"]] +
-              [b[1] for b in (joint["El"]["band"], hqe_gap["El"]["band"]) if b is not None] if v is not None)
-    handles = [Line2D([], [], color=FIT_COLOR, lw=2.6, label=r"Joint $\chi^2$ fit"),
-               Line2D([], [], color="0.35", lw=1.6, label=r"Per-$E_\ell$-cut fits ($M_X$)"),
-               Line2D([], [], color=HQE_COLOR, lw=2.6, label="HQE inversion"),
-               Patch(color="0.5", alpha=0.3, lw=0, label="68% (toys)")]
-    finish(fig, axes, handles, path, ymax=[1.35 * ymx, 1.3 * yel, 0.7])
+    ymx = max((float(np.max((m["f"] * 2 * np.sqrt(m["x"]))[sel(np.sqrt(m["x"]))])) for m in mx.values()), default=None)
+    ymx = ymx if ymx is not None else max(peak(hqe_gap["Mx"], 2 * np.sqrt(hqe_gap["Mx"]["x"])), default=None)
+    yel = max(peak(hqe_gap["El"]) + (peak(joint["El"]) if "El" in joint else []))
+    handles = ([Line2D([], [], color=FIT_COLOR, lw=2.6, label=r"Joint $\chi^2$ fit")] if joint else []) \
+        + ([Line2D([], [], color="0.35", lw=1.6, label=r"Per-$E_\ell$-cut fits ($M_X$)")] if mx else []) \
+        + [Line2D([], [], color=HQE_COLOR, lw=2.6, label="HQE inversion"),
+           Patch(color="0.5", alpha=0.3, lw=0, label="68% (toys)")]
+    finish(fig, axes, handles, path, ymax=[None if ymx is None else 1.35 * ymx, 1.3 * yel, 0.7])
     plt.close(fig)
 
 
@@ -331,9 +409,90 @@ def plot_hqe_vs_stack(plt, T, hqe_full, smoothing, path):
     plt.close(fig)
 
 
+def plot_gap_modes(plt, cfg, joint, mx, hqe_gap, modes, path):
+    """The gap density of plot_gap (Mx fit at the loosest El cut, where the fits were run) with the
+    candidate gap-mode shapes."""
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    fig, axes = figure(plt)
+    if mx:
+        thr0 = min(mx)
+        for thr in sorted(mx)[1:]:
+            axes[0].plot(*to_mx(mx[thr]["x"], mx[thr]["f"]), color="0.75", lw=1.0)
+        draw_curve(axes[0], mx[thr0]["x"], mx[thr0]["f"], mx[thr0]["band"], FIT_COLOR, "Mx")
+        axes[0].text(0.06, 0.94, rf"$E_\ell > {thr0:.1f}\ \mathrm{{GeV}}$", transform=axes[0].transAxes,
+                     fontsize=20, color=FIT_COLOR, ha="left", va="top")
+    sup = cfg["data"]["support"]
+    for ax, obs in zip(axes, OBS):
+        h = hqe_gap[obs]
+        draw_curve(ax, h["x"], h["f"], h["band"], HQE_COLOR, obs)
+        if obs in joint:
+            j = joint[obs]
+            draw_curve(ax, j["x"], j["f"], j["band"], FIT_COLOR, obs)
+            ax.text(0.06, 0.94, rf"$\chi^2/\mathrm{{ndf}} = {j['chi2']:.1f}/{j['dof']}$", transform=ax.transAxes,
+                    fontsize=20, color=FIT_COLOR, ha="left", va="top")
+        if obs != "Mx":
+            ax.set_xlim(*sup[VAR[obs]])
+        for mode, _, color, ls in SHOW_MODES:
+            if mode in modes:
+                ax.plot(*modes[mode][obs], color=color, ls=ls, lw=2.2)
+    axes[0].set_xlim(1.75, 4.0)
+    infeasible_note(axes[0], hqe_gap, 0.94)
+    # y range from the fits and the HQE curve (Mx without fits: the typical mode peak); narrow mode
+    # peaks may run off the top
+    y_mx = peak(mx[thr0], 2 * np.sqrt(mx[thr0]["x"])) if mx else \
+        [float(np.median([np.max(modes[m]["Mx"][1]) for m in modes]))]
+    ymax = [1.4 * max(y_mx)] + [1.3 * max(peak(hqe_gap[o]) + (peak(joint[o]) if o in joint else []))
+                                for o in ("El", "Q2")]
+    handles = ([Line2D([], [], color=FIT_COLOR, lw=2.6, label=r"$\chi^2$ fit")] if joint else []) \
+        + ([Line2D([], [], color="0.75", lw=1.0, label=r"Tighter $E_\ell$ cuts ($M_X$)")] if mx else []) \
+        + [Line2D([], [], color=HQE_COLOR, lw=2.6, label="HQE inversion"),
+           Patch(color="0.5", alpha=0.3, lw=0, label="68% (toys)")]
+    handles += [Line2D([], [], color=c, ls=ls, lw=2.2, label=l) for m, l, c, ls in SHOW_MODES if m in modes]
+    for ax, y in zip(axes, ymax):
+        ax.set_ylim(0, y)
+    fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False, fontsize=FS_LEG,
+               bbox_to_anchor=(0.5, -0.2), handlelength=2.4)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_gap_modes_el_q2(plt, cfg, hqe_gap, modes, path):
+    """El and q2: the HQE gap inversion (68% band) with the candidate gap modes and, for scale,
+    the COCKTAIL_MODES SEM shapes; all of unit area on the full support (threshold 0)."""
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    fig, axes = plt.subplots(1, 2, figsize=(16.5, 7.2), dpi=200)
+    sup = cfg["data"]["support"]
+    styles = [(m, l, c, ls) for m, l, c, ls in SHOW_MODES] + [(m, l, c, ls) for m, l, c, ls, _ in COCKTAIL_MODES]
+    for ax, obs in zip(axes, ("El", "Q2")):
+        h = hqe_gap[obs]
+        draw_curve(ax, h["x"], h["f"], h["band"], HQE_COLOR, obs)
+        top = peak(h)
+        for mode, _, color, ls in styles:
+            if mode in modes:
+                x, f = modes[mode][obs]
+                ax.plot(x, f, color=color, ls=ls, lw=2.2)
+                top.append(float(np.max(f)))
+        ax.set_xlim(*sup[VAR[obs]])
+        ax.set_ylim(0, 1.1 * max(top))
+        ax.set_xlabel(XLABEL[obs], fontsize=FS_LABEL)
+        ax.set_ylabel(YLABEL[obs], fontsize=FS_LABEL)
+        style(ax)
+    handles = [Line2D([], [], color=HQE_COLOR, lw=2.6, label="HQE inversion"),
+               Patch(color=HQE_COLOR, alpha=0.3, lw=0, label="68% (toys)")]
+    handles += [Line2D([], [], color=c, ls=ls, lw=2.2, label=l) for m, l, c, ls in styles if m in modes]
+    fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False, fontsize=FS_LEG,
+               bbox_to_anchor=(0.5, -0.2), handlelength=2.4)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def run(B, n_toys, seed):
+def run(B, n_toys, seed, joint_on=None):
     import matplotlib
     matplotlib.use("Agg")
     import plothist  # noqa: F401  (house style)
@@ -350,12 +509,22 @@ def run(B, n_toys, seed):
     write_budget_tex(budget, od / "moment_budget_data_thr0.tex", BUDGET_LABELS)
     rows = feasibility(cfg, B)
     write_feasibility_tex(rows, od / "feasibility_table.tex")
-    joint = joint_results(cfg, B, n_toys, rng)
-    mx = mx_results(cfg, B, n_toys, rng)
+    if joint_on is None:
+        joint_on = local["data"].get("joint_fit", True)
+    joint = joint_results(cfg, B, n_toys, rng) if joint_on else {}
+    mx = mx_results(cfg, B, n_toys, rng) if joint_on else {}
     hqe_gap = hqe_results(cfg, T, n_toys, rng, subtract=True)
     hqe_full = hqe_results(cfg, T, n_toys, rng, subtract=False)
 
     plot_gap(plt, cfg, joint, mx, hqe_gap, fd / "gap_density.pdf")
+    # mode shapes normalized like the curves they are compared with: with the fits, Mx above the
+    # loosest El cut and q2 above the joint-fit start; without, threshold 0 on the full support
+    out3, q2_0 = output_root(local, HERE) / "3", cfg["data"]["support"]["q2"][0]
+    modes0 = mode_shapes(local, out3, 0.0, q2_0, cocktail=True)
+    modes = mode_shapes(local, out3, min(mx), joint["Q2"]["x"][0]) if joint_on else modes0
+    if modes:
+        plot_gap_modes(plt, cfg, joint, mx, hqe_gap, modes, fd / "gap_density_modes.pdf")
+        plot_gap_modes_el_q2(plt, cfg, hqe_gap, modes0, fd / "gap_density_modes_El_q2.pdf")
     plot_hqe_full(plt, hqe_full, fd / "hqe_inclusive_density.pdf")
     plot_hqe_vs_stack(plt, T, hqe_full, local["data"]["stack_smoothing"], fd / "hqe_vs_sem_stack.pdf")
 
@@ -379,6 +548,8 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--submit", action="store_true")
     p.add_argument("--after", help="LSF job name the submitted job waits for")
+    p.add_argument("--joint-fit", action=argparse.BooleanOptionalAction, default=None,
+                   help="joint and per-El-cut fits on/off (default: config data.joint_fit)")
     args = p.parse_args()
     cfg = yaml.safe_load(open(HERE / "config.yaml"))
     bundle = Path(args.bundle).resolve() if args.bundle else default_path(HERE)
@@ -386,12 +557,13 @@ def main():
         logs = HERE / "logs" / "8"
         logs.mkdir(parents=True, exist_ok=True)
         dep = f' -w "done({args.after})"' if args.after else ""
+        jf = "" if args.joint_fit is None else " --joint-fit" if args.joint_fit else " --no-joint-fit"
         cmd = (f'bsub -q {cfg["generation"]["queue"]} -env all -J s8data{dep} -n 4 -oo {logs}/run.log '
-               f'"cd {HERE} && python3 8_data_results.py --bundle {bundle} --n-toys {args.n_toys}"')
+               f'"cd {HERE} && python3 8_data_results.py --bundle {bundle} --n-toys {args.n_toys}{jf}"')
         print(cmd)
         subprocess.run(cmd, shell=True, check=True)
     else:
-        run(Bundle(bundle), args.n_toys, args.seed)
+        run(Bundle(bundle), args.n_toys, args.seed, args.joint_fit)
 
 
 if __name__ == "__main__":
