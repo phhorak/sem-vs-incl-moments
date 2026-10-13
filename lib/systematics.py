@@ -1,6 +1,6 @@
 """Systematic-uncertainty ingredients for the step-6 toy loop.
 
-  ff:           Hammer FF eigenvariations, grouped D / D* / D** (correlated within a group)
+  ff:           Hammer FF eigenvariations, grouped D+D* (one BLPRXP fit) / D** (correlated within a group)
   bf_mode:      per-decay-mode BF Gaussian nuisance on the SEM template
   incl_moments: relative deviations of the inclusive raw moments at threshold 0 from the HQE-fit
                 toys (Asimov only; mirrors the data-side threshold-0 inversion)
@@ -16,10 +16,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+NR_MODES = {"Bp": ("D0pipip", "Dmpipiz", "D0pizpiz", "Dst0pipip", "Dstmpipiz", "Dst0pizpiz"),
+            "B0": ("Dpipip", "D0pipipz", "Dpizpiz", "Dstpipip", "Dst0pipipz", "Dstpizpiz")}
 FF_GROUPS = {
-    "D":     {"Bp_Denu", "B0_Denu", "Bp_Dmunu", "B0_Dmunu"},
-    "Dst":   {"Bp_Dstenu", "B0_Dstenu", "Bp_Dstmunu", "B0_Dstmunu"},
-    "Dstst": {f"{b}_{m}{l}" for b in ("Bp", "B0") for m in ("D1", "D0st", "Dp1", "D2st")
+    "DDst":  {f"{b}_{m}{l}" for b in ("Bp", "B0") for m in ("D", "Dst") for l in ("enu", "munu")},
+    "Dstst": {f"{b}_{m}{l}" for b in ("Bp", "B0") for m in ("D1", "D0st", "Dp1", "D2st", *NR_MODES[b])
               for l in ("enu", "munu")},
 }
 
@@ -49,7 +50,7 @@ def read_parquet_downcast(path, columns, float32_cols=(), category_cols=("decay_
 
 # ── FF ───────────────────────────────────────────────────────────────────────
 
-def build_ff_slope_matrix(df: pd.DataFrame, max_slots: int = 8) -> tuple[np.ndarray, list[str]]:
+def build_ff_slope_matrix(df: pd.DataFrame, max_slots: int = 16) -> tuple[np.ndarray, list[str]]:
     """(n_events, n_nuisances) float32 matrix of linearized slopes
     0.5*[(up-c)/c + (c-down)/c], zero outside each group; only slots that actually vary."""
     dn = df["decay_name"].astype("category")

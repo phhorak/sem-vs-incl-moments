@@ -104,19 +104,16 @@ class HammerStudy:
 
         if mode == "B2":
             self.input_models = [
-                BGL.BtoDstEllNu_B2dec(),
-                BGLB2.BtoDEllNu_dec(),
+                BGL.BtoDstEllNu_dec(),  # = the decfile BGL coefficients / (1.0066 Vcb)
+                BGL.BtoDEllNu_evtgen(),  # EvtGen B -> D BGL (Blaschke = 1) in Hammer-BGL form
                 BLR.BtoD1EllNu_dec(),
                 BLR.BtoD0stEllNu_dec(),
                 BLR.BtoD1prEllNu_dec(),
                 BLR.BtoD2stEllNu_dec(),
-                CLN.BtoDTauNu_dec(),
-                CLN.BtoDstTauNu_dec(),
-                BLR.BtoD1EllNu_dec(tau=True),
-                BLR.BtoD0stEllNu_dec(tau=True),
-                BLR.BtoD1prEllNu_dec(tau=True),
-                BLR.BtoD2stEllNu_dec(tau=True),
             ]
+            # The input scheme is keyed by hadronic transition only ("BD", "BD*"), so the tau CLN
+            # inputs (CLN.BtoD(st)TauNu_dec) would overwrite the light-lepton BGL ones: light
+            # leptons only.
         else:
             raise NotImplementedError(
                 "Not having default options for Belle and LHCb MC yet"

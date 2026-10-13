@@ -178,6 +178,29 @@ class BGL(FFModel):
         )
 
     @classmethod
+    def BtoDEllNu_evtgen(cls):
+        """
+        Hammer input for the generated B -> D ell nu: EvtGen's BGL (decfile a+ = [0.0126, -0.094, 0.34, -0.1],
+        a0 = [0.0115, -0.057, 0.12, 0.4]) has Blaschke factors = 1 (EvtBGLFF::getscalarff, p_i = 1). These
+        are the coefficients of Hammer's BGL (with poles) that reproduce it to 3e-5 over the full w range,
+        b(z) = P(z) phi_Hammer(z) f_EvtGen(z) fitted by a cubic (lib/hammer_wrapper/fit_evtgen_bgl_d.py).
+        Replaces BGLB2.BtoDEllNu_dec(), which needs a Hammer class the Belle II externals do not provide.
+        """
+        return cls(
+            Xc="D",
+            lep="Ell",
+            params={
+                "a+_1": uf(0.0156573, 0), "a+_2": uf(-0.0376953, 0),
+                "a+_3": uf(-0.0956435, 0), "a+_4": uf(1.58792, 0),
+                "a0_1": uf(0.0795618, 0), "a0_2": uf(-0.219029, 0),
+                "a0_3": uf(-0.102408, 0), "a0_4": uf(5.48981, 0),
+            },
+            param_init="{ap: [%f,%f,%f,%f], a0: [%f,%f,%f,%f]}",
+            corr_matrix=np.identity(8),
+            expert_info=cls.BtoDEllNu_evtgen.__func__.__doc__,
+        )
+
+    @classmethod
     def BtoDEllNu_ins2936544(cls):
         """
         B -> D BGL refit with Hammer's actual Blaschke factors, constrained to

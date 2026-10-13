@@ -23,12 +23,18 @@ generation:
     - Bplus/Dst0pi0enu
     - Bplus/Dmpienu
     - Bplus/D0pi0enu
-    - Bplus/D0pipipenu
-    - Bplus/Dmpipizenu
-    - Bplus/D0pizpizenu
-    - Bplus/Dst0pipipenu
-    - Bplus/Dstmpipizenu
-    - Bplus/Dst0pizpizenu
+    - Bplus/D0pipipenu/Dp1
+    - Bplus/D0pipipenu/D0st
+    - Bplus/Dmpipizenu/Dp1
+    - Bplus/Dmpipizenu/D0st
+    - Bplus/D0pizpizenu/Dp1
+    - Bplus/D0pizpizenu/D0st
+    - Bplus/Dst0pipipenu/Dp1
+    - Bplus/Dst0pipipenu/D0st
+    - Bplus/Dstmpipizenu/Dp1
+    - Bplus/Dstmpipizenu/D0st
+    - Bplus/Dst0pizpizenu/Dp1
+    - Bplus/Dst0pizpizenu/D0st
     - Bplus/DsstkKenu
     - Bplus/DsKenu
     - Bplus/D0etaenu
@@ -44,12 +50,18 @@ generation:
     - Bplus/Dst0pi0munu
     - Bplus/Dmpimunu
     - Bplus/D0pi0munu
-    - Bplus/D0pipipmunu
-    - Bplus/Dmpipizmunu
-    - Bplus/D0pizpizmunu
-    - Bplus/Dst0pipipmunu
-    - Bplus/Dstmpipizmunu
-    - Bplus/Dst0pizpizmunu
+    - Bplus/D0pipipmunu/Dp1
+    - Bplus/D0pipipmunu/D0st
+    - Bplus/Dmpipizmunu/Dp1
+    - Bplus/Dmpipizmunu/D0st
+    - Bplus/D0pizpizmunu/Dp1
+    - Bplus/D0pizpizmunu/D0st
+    - Bplus/Dst0pipipmunu/Dp1
+    - Bplus/Dst0pipipmunu/D0st
+    - Bplus/Dstmpipizmunu/Dp1
+    - Bplus/Dstmpipizmunu/D0st
+    - Bplus/Dst0pizpizmunu/Dp1
+    - Bplus/Dst0pizpizmunu/D0st
     - Bplus/DsstkKmunu
     - Bplus/DsKmunu
     - Bplus/D0etamunu
@@ -65,12 +77,18 @@ generation:
     - B0/Dstpi0enu
     - B0/D0pienu
     - B0/Dpi0enu
-    - B0/Dpipipenu
-    - B0/D0pipipzenu
-    - B0/Dpizpizenu
-    - B0/Dstpipipenu
-    - B0/Dst0pipipzenu
-    - B0/Dstpizpizenu
+    - B0/Dpipipenu/Dp1
+    - B0/Dpipipenu/D0st
+    - B0/D0pipipzenu/Dp1
+    - B0/D0pipipzenu/D0st
+    - B0/Dpizpizenu/Dp1
+    - B0/Dpizpizenu/D0st
+    - B0/Dstpipipenu/Dp1
+    - B0/Dstpipipenu/D0st
+    - B0/Dst0pipipzenu/Dp1
+    - B0/Dst0pipipzenu/D0st
+    - B0/Dstpizpizenu/Dp1
+    - B0/Dstpizpizenu/D0st
     - B0/DsstkKenu
     - B0/DsKenu
     - B0/Detaenu
@@ -86,12 +104,18 @@ generation:
     - B0/Dstpi0munu
     - B0/D0pimunu
     - B0/Dpi0munu
-    - B0/Dpipipmunu
-    - B0/D0pipipzmunu
-    - B0/Dpizpizmunu
-    - B0/Dstpipipmunu
-    - B0/Dst0pipipzmunu
-    - B0/Dstpizpizmunu
+    - B0/Dpipipmunu/Dp1
+    - B0/Dpipipmunu/D0st
+    - B0/D0pipipzmunu/Dp1
+    - B0/D0pipipzmunu/D0st
+    - B0/Dpizpizmunu/Dp1
+    - B0/Dpizpizmunu/D0st
+    - B0/Dstpipipmunu/Dp1
+    - B0/Dstpipipmunu/D0st
+    - B0/Dst0pipipzmunu/Dp1
+    - B0/Dst0pipipzmunu/D0st
+    - B0/Dstpizpizmunu/Dp1
+    - B0/Dstpizpizmunu/D0st
     - B0/DsstkKmunu
     - B0/DsKmunu
     - B0/Detamunu
@@ -123,11 +147,14 @@ digitize:
 
 reweight:
   bf_gap: 0.018       # total branching-fraction budget for all gap modes
+  # Non-resonant D(*)pipi l nu is generated through broad D** (Belle II 1x9670000x.dec); share of
+  # each final-state BF assigned to B -> D1' l nu and B -> D0* l nu
+  nr_parent_split: {Dp1: 0.5, D0st: 0.5}
   lcp_mass_max: 4.6
   lcp_nbins: 40
   lcp_max_ratio: 10.0
   # one job per cocktail ROOT file; more files per job exceed the 4 GB slot
-  cocktail_n_jobs: 76
+  cocktail_n_jobs: 104
 
 average:
   method: polynomial        # "gls": free value per (key, cut); "polynomial": smooth in the cut

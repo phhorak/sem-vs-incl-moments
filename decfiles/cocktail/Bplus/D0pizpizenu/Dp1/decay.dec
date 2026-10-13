@@ -1,0 +1,20 @@
+noPhotos
+
+# B+ -> anti-D'_10 e+ nu_e (LLSW), anti-D'_10 -> anti-D0 pi0 pi0 (PHSP)
+# Non-resonant D(*)pipi l nu through a broad D** as in Belle II 129670000x.dec
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+1.0  anti-D'_10  e+  nu_e   LLSW 0.68 -0.2 0.3;
+Enddecay
+CDecay B-sig
+
+Decay anti-D'_10
+1.0  anti-D0 pi0 pi0   PHSP;
+Enddecay
+CDecay D'_10
+
+End

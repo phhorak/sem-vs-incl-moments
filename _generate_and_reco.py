@@ -124,7 +124,11 @@ def _family_key(mode):
     """Cocktail muon modes (e.g. 'Bplus/Dmunu') share their electron sibling's MODES entry;
     the muon findMCDecay string is derived from it via _lepton_swap. Gap-mode keys have no
     lepton suffix and pass through unchanged (both flavors already have their own MODES entry
-    where needed, or share one bare key for gap modes with an inline 50/50 e/mu decfile)."""
+    where needed, or share one bare key for gap modes with an inline 50/50 e/mu decfile).
+    Non-resonant D(*)pipi modes ('Bplus/D0pipipenu/Dp1') use the string of their D** parent."""
+    parent = mode.rsplit('/', 1)[-1]
+    if parent in ('Dp1', 'D0st'):
+        return f"{mode.split('/')[0]}/{parent}enu"
     if mode.endswith('munu'):
         return mode[:-4] + 'enu'
     return mode

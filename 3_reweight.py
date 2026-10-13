@@ -108,8 +108,8 @@ if args.submit_gap:
     sys.exit(0)
 
 if args.submit_cocktail:
-    root_files = sorted(glob.glob(str((Path(cfg["paths"]["output"]) / "1") / "**" / "*.root"), recursive=True))
-    root_files = [p for p in root_files if "gap_modes" not in p]
+    out1_ = Path(cfg["paths"]["output"]) / "1"
+    root_files = sorted(str(f) for m in cfg["generation"]["cocktail_modes"] for f in (out1_ / m).glob("*.root"))
     if not root_files:
         print("error: no cocktail ROOT files found under output/1")
         sys.exit(1)
@@ -165,7 +165,7 @@ _MCA = {
 
 try:
     from hammer_wrapper.ff_reweighting import HammerStudy
-    from hammer_wrapper.ff_models import BGL, BLR
+    from hammer_wrapper.ff_models import BLPRXP, BLR
 
     _hs = HammerStudy(mode="B2", default_names=False)
     _hs._generations["B"]                  = "B"
@@ -177,8 +177,8 @@ try:
     _hs.set_ff_input_scheme(verbose=False)
     _FF_SCHEME = "ff_weight"
     _hs.add_ff_scheme([
-        BGL.BtoDEllNu_dec_updated(),
-        BGL.BtoDstEllNu_new(),
+        BLPRXP.BtoDEllNu_new(),
+        BLPRXP.BtoDstEllNu_new(),
         BLR.BtoD1EllNu_new(),
         BLR.BtoD0stEllNu_new(),
         BLR.BtoD1prEllNu_new(),
@@ -362,6 +362,10 @@ _HAMMER_DECAYS = {
     "Bp_Dmunu", "Bp_Dstmunu", "Bp_D1munu", "Bp_D0stmunu", "Bp_Dp1munu", "Bp_D2stmunu",
     "B0_Dmunu", "B0_Dstmunu", "B0_D1munu", "B0_D0stmunu", "B0_Dp1munu", "B0_D2stmunu",
 }
+# Non-resonant D(*)pipi through D1'/D0*: Hammer sees only B -> D** l nu (3-body D** decay unsupported)
+NR_DECAYS = {n for n, c in CATEGORY.items() if c == "D(*) pi pi"}
+NR_SPLIT = cfg["reweight"]["nr_parent_split"]
+_HAMMER_DECAYS |= NR_DECAYS
 
 
 # ── DsK spectrum reweight helper ─────────────────────────────────────────────
@@ -520,9 +524,7 @@ def _apply_isospin_weight(df, decay_name_col="decay_name", weight_col="total_wei
 # ═══════════════════════════════════════════════════════════════════════════════
 
 print("\n=== SECTION A: cocktail reweighting ===")
-root_files = sorted(glob.glob(str(out1 / "**" / "*.root"), recursive=True))
-# Exclude gap_modes subtree from cocktail
-root_files = [p for p in root_files if "gap_modes" not in p]
+root_files = sorted(str(f) for m in cfg["generation"]["cocktail_modes"] for f in (out1 / m).glob("*.root"))
 
 if not args.skip_cocktail and not root_files:
     print(f"No ROOT files found under {out1}. Run 1_generate.py first.")
@@ -573,6 +575,15 @@ if not args.skip_cocktail:
         # tuple-like outputs into a temporary DataFrame for some inputs/versions.
         sigs = df.apply(_pdg_sig, axis=1, result_type="reduce")
         df["decay_name"] = sigs.map(lambda s: PDG_NAME.get(s, f"unknown_{s[1]}"))
+        df["_split"], df["mc_weight"] = 1.0, 1.0
+        parent = Path(path).parent.name
+        if parent in NR_SPLIT:
+            fs = Path(path).parent.parent
+            bm = "bp" if fs.parent.name == "Bplus" else "b0"
+            df["decay_name"] = f"{'Bp' if bm == 'bp' else 'B0'}_{fs.name}"
+            df["_split"] = NR_SPLIT[parent]
+            ch = f"{'d1p' if parent == 'Dp1' else 'd0'}_{'dstar' if fs.name.startswith('Dst') else 'd'}_pipi"
+            df["mc_weight"] = MCAmbulance(bm, ch, "mu" if fs.name.endswith("munu") else "e").CorrectionWeight(df["Mx"].to_numpy())
         df["category"]   = df["decay_name"].map(CATEGORY).fillna("unknown")
         df["_n_reco"]    = len(df)
         frames.append(df)
@@ -581,10 +592,9 @@ if not args.skip_cocktail:
 
     out_df["bf"]     = out_df["decay_name"].map(BF).fillna(0.0)
     out_df["bf_unc"] = out_df["decay_name"].map(BF_UNC).fillna(0.0)
-    out_df["weight"] = (out_df["bf"] / out_df["_n_reco"].replace(0, np.nan)).fillna(0.0)
-    out_df = out_df.drop(columns=["_n_reco"])
+    out_df["weight"] = (out_df["bf"] * out_df["_split"] / out_df["_n_reco"].replace(0, np.nan)).fillna(0.0)
+    out_df = out_df.drop(columns=["_n_reco", "_split"])
 
-    out_df["mc_weight"] = 1.0
     for dname, corrector in _MCA.items():
         mask = out_df["decay_name"] == dname
         if mask.any():
@@ -599,6 +609,7 @@ if not args.skip_cocktail:
         hmask = out_df["decay_name"].isin(_HAMMER_DECAYS)
         if hmask.any():
             tmp = out_df.loc[hmask].copy()
+            tmp.loc[tmp["decay_name"].isin(NR_DECAYS), ["d1d0_mcPDG", "d1d1_mcPDG"]] = np.nan
             _hs.process_events(tmp, _FF_SCHEME, verbose=False)
             out_df.loc[hmask, ff_cols] = tmp[ff_cols].to_numpy()
     else:
