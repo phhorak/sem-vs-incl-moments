@@ -16,8 +16,8 @@ numbers exist, not in the pipeline) · **todo** · **input** (blocked on input, 
 | D3 | Polynomial average (step 4), per-threshold table, joint fit → appendix or removed | proposed |
 | D4 | MaxEnt densities are illustration; quantitative statements are tests and bounds | adopted (Markus) |
 | D5 | Every statement is conditional on the SEM normalisations; c_true ≈ 6 stated up front | adopted (Markus) |
-| D6 | Nominal NR D(*)ππ lineshape: Belle II resonant model (D1'/D0* → D(*)ππ, LLSW→BLR) vs current 5-body PHSP | **open, decides C5** |
-| D7 | Nominal D/D* FF: BGL (current) vs BLPRXP (Belle II convention) | open |
+| D6 | Nominal NR D(*)ππ: Belle II analysis cocktail, B → D1'/D0*(→ D(*)ππ PHSP) ℓν, LLSW → BLR, MCAmbulance; 5-body PHSP kept as alternative | adopted 2026-10-14 (split D1':D0* = 50:50, `reweight.nr_parent_split`, I2) |
+| D7 | Nominal D/D* FF: BLPRXP (one fit, D and D* eigenvariations shared) | adopted 2026-10-14 |
 | D8 | Explicit candidate χ² ("no single mode fits") → Paper 2; Paper 1 keeps only kinematic-class support tests | proposed |
 
 ## Claims
@@ -36,6 +36,17 @@ numbers exist, not in the pipeline) · **todo** · **input** (blocked on input, 
 | C10 | Positivity lower-bounds the gap: E_ℓ, q² admissible only for B_gap / B_incl ≳ 0.10–0.11 | `admissibility_vs_gap.pdf` | `interp.py` | proto |
 | C11 | Gap location vs SEM and candidates (mean–variance plane): gap hard in E_ℓ, high in q²; candidates softer / lower | `moment_plane_clean.pdf` | `moment_plane_clean.py` | proto (illustration, see D8) |
 | C12 | Robustness: Belle II vs LHCb cocktail, β = 2 vs 7/2 for E_ℓ, support choices, partial-BF-per-threshold cross-check | table | — | todo (M4), **input** |
+
+## Pipeline fixes (2026-10-14)
+
+- Hammer input scheme: the τ CLN inputs overwrote the light-lepton ones (dict keyed by "BD"/"BD*"),
+  so every D/D* FF weight so far was target / CLN(τ decfile parameters). Effect at fixed BGL target:
+  D ≤ 2 % per event; D* 0.54–1.83 per event, q² shape ±5 %, ⟨q²⟩ +0.08 GeV².
+- B → D input: EvtGen BGL has Blaschke = 1 and the `BGLB2` Hammer class does not exist in the
+  externals; replaced by Hammer-BGL coefficients reproducing EvtGen to 3e-5 (`BGL.BtoDEllNu_evtgen`).
+- B → D* input: decfile coefficients (`BGL.BtoDstEllNu_dec`), not Table V of 2008.09341.
+- FF slope matrix read only 8 eigenvariation slots (BLPRXP has 9).
+- B0 NR decfiles without mixing (findMCDecay segfault with VSS_BMIX on 3-body D** decays).
 
 ## Retired (appendix at most)
 
@@ -66,8 +77,8 @@ LHCb (DecFiles Sim10, public): D*μν, Dμν CLN; D** cocktail ISGW2 with D1', D
 | # | Needed | From | Unblocks |
 |---|--------|------|----------|
 | I1 | Sign-off on this ledger, D3, D8 | Markus, Danny | everything |
-| I2 | D6: nominal NR D(*)ππ lineshape and its BF split over D1'/D0* (or a measured M(D(*)ππ) spectrum) | Markus / you | C1, C5, C7 |
-| I3 | D7: BGL or BLPRXP as nominal D/D* FF | Markus | C1 |
+| I2 | D6: BF split of each NR D(*)ππ final state over D1' and D0* (50:50 assumed) | Markus / you | C1, C5, C7 |
+| I3 | ~~D7~~ settled (BLPRXP) | — | — |
 | I4 | Confirm `inputs/hqe_likelihood_toys/likelihood_toys.h5` is the 2609.28752 release; is m4 (q²) available at zero threshold? | Markus | C2, C6, C8 |
 | I5 | Partial BFs ΔB(E_ℓ > cut), ΔB(q² > cut) with correlations to the moments, from the HQE fit | Markus | C12 cross-check |
 | I6 | LHCb cocktail normalisation: which BFs (HFLAV as ours, or LHCb fit values) and whether the "higher D**" cocktail counts as SEM or as gap | note author / Markus | C12 |
