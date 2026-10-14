@@ -216,6 +216,8 @@ systematics:
   # lib/systematics.bf_gap_sigma.
   n_leptons: 2
   bf_gap_unc: {Bp: 0.0028, B0: 0.0026}
+  # B(B -> Xc l nu) uncertainty per species and lepton (draft Table 1); only for the sigma(B_incl) x 2 variants of step 10
+  bf_incl_unc: {Bp: 0.0016, B0: 0.0015}
 
 asimov:
   truth_smoothing: {mx: 0.03, el: 0.12, q2: 0.6}   # Gaussian kernel of the drawn truth [GeV, GeV, GeV^2]

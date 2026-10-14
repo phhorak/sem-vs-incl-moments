@@ -1,11 +1,12 @@
 # Paper 1 claims ledger
 
 Paper 1: model-independent constraints on the semileptonic gap (Markus's working note, Sep 2026).
-Every statement in the paper maps to a row here; every row maps to a pipeline output. Prose is
+Every statement in the paper maps to a row here; every row maps to a pipeline output. Numbers reach
+the paper only through `paper/numbers.tex` (written by step 11); figures from `figures/7`–`11`. The
+current write-up for collaborators is `paper/narrative.tex` (Summary, Method, Results 1–3). Prose is
 written only for rows marked **done**. Frozen starting point: tag `slac-seminar-2026-10`.
 
-Status: **done** (pipeline step, reproducible) · **proto** (script in `scratch/interpretation/`,
-numbers exist, not in the pipeline) · **todo** · **input** (blocked on input, see bottom).
+Status: **done** (pipeline step, reproducible) · **todo** · **input** (blocked on input, see bottom).
 
 ## Decisions
 
@@ -22,21 +23,23 @@ numbers exist, not in the pipeline) · **todo** · **input** (blocked on input, 
 
 ## Claims
 
-| ID | Claim | Evidence | Produced by | Status |
-|----|-------|----------|-------------|--------|
-| C1 | SEM from HFLAV: B_SEM = 9.26 / 8.55 %, gap 1.79 / 1.72 % (16.2 / 16.7 % of inclusive), c_true = 6.07 | Tab. SEM BFs | step 5, `lib/systematics.py` | done (revisit after D6, D7) |
-| C2 | Inclusive full-phase-space moments with full theory covariance | Fig. measurements + HQE | `scratch/interpretation/measurements_hqe.py` | proto |
-| C3 | Inclusive spectrum inverted without SEM subtraction agrees with the SEM shape in E_ℓ; no c_true needed | `figures/8/hqe_vs_sem_stack.pdf` | step 8 | done |
-| C4 | Closure: the zero-threshold procedure recovers known gap truths (D1'→D*η, 50 % Dℓν + 50 % Λc p̄ℓν); M_X² cannot represent lines with 3 moments | `figures/7/*/convergence_all3_band.pdf`, `output/7/summary.json` | step 7 | done (zero threshold only) |
-| C5 | M_X² residual admissible with the Belle II cocktail (SEM Var 4.06 → 1.22 GeV⁴ vs inclusive 1.62 ± 0.08). The M_X² moments are sensitive to the high-mass tails of the broad states: PHSP NR D(*)ππ rejected (d² = 20.9, p = 0.002, rejected in 100 % of toys); bare EvtGen broad lineshapes without the MCAmbulance phase-space fix rejected (p = 0.009). Robust against: no Hammer for broad states, HQE M_X² unc. × 2, D1':D0* split, supports, LHCb-style cocktail. Open caveat (Markus): MC calibration of the measured M_X moments | `output/10/summary.json` | step 10 | done |
-| C6 | Admissibility as a test: Mahalanobis distance to the moment space (exact two-atom boundary), bootstrap p. Nominal: d² = 0 for M_X², E_ℓ, q² and jointly (p = 1). χ² approximation not conservative (non-Gaussian toys) | `output/10/summary.json` | step 10 | done |
-| C7 | (reframed) Positivity-allowed scale of each SEM component, incl. B_SEM/c_true change: D* ≤ 1.30 (closes the gap alone at 1.34), D ≤ 1.65 (1.80), D** ≤ 2.25 (2.33); D(*)ππ, D_sK unconstrained. Pairs (D*–D, D*–D**, D–D**, D**–D(*)ππ): positivity removes only a thin band before gap closure | `figures/10/component_scan.pdf`, `pair_scan.pdf` | step 10 | done (χ²₉ approximation) |
-| C8 | Model-independent CDF bounds (LP, 3 moments, nominal / 68 % toys): P(E_ℓ ≤ 0.5) ≤ 0.16 (0.17); P(E_ℓ ≤ 1.0) ∈ [0.02, 0.56]; P(q² ≤ 4) ∈ [0.19, 0.79]; P(q² ≤ 6) ≥ 0.40 (0.36); P(M_X² ≤ 10) ≥ 0.93 (0.88) | `figures/9/cdf_bounds.pdf` | step 9 | done |
-| C9 | Support tests: Λc p̄ alone excluded — ≥ 94 % of the gap below its M_X² threshold and ≥ 17 % above its q² endpoint, allowed in 0 % of toys. D_sK alone disfavoured only by M_X² (≥ 12 % below 6.06 GeV², allowed in 6 % of toys) | `output/9/summary.json` | step 9 | done (coverage, power study incl. the reverse test — reject "light states only" for an injected heavy gap — todo) |
-| C10 | Positivity lower-bounds the gap size: M_X² admissible in ≥ 50 % of toys only for B_gap/B_incl ≥ 0.13 (nominal 0.165: 78 %); E_ℓ ≥ 0.055, q² ≥ 0.04 | `figures/9/gap_fraction_scan.pdf` | step 9 | done |
-| C11 | Gap mean/variance vs SEM and inclusive (Paper 1); gap density from the zero-threshold inversion peaks near M_X ≈ 2.4 GeV. Comparison with explicit candidate modes (Dπππ, D1'→D*η, D_sK, Λc p̄) belongs to Paper 2 (D8) | `moment_plane_clean.pdf`, `figures/8/gap_density.pdf` | step 8, `moment_plane_clean.py` | proto |
-| C12 | Robustness: LHCb-style cocktail (D** fractions 11874430/12873450, ISGW2 D** shapes, higher D** D(2S), D*(2S), D(2750), D(3000) → D*ππ instead of NR D(*)ππ, no D_sK; D(2750)/D(3000) emulated as D2* aliases) — each ingredient and all together leave C5, C6, C13 unchanged (all admissible; c_true 5.97 without D_sK). Also split, supports (step 10). Open: LHCb absolute normalisation (I6), β (MaxEnt only), partial-BF cross-check (I5) | `output/10/summary.json` | step 10 | mostly done |
-| C13 | A common BF shortfall (all SEM BFs low by one factor, gap with the SEM shape) is excluded: inclusive vs SEM moments differ in M_X² (d² = 41.8, p < 5·10⁻⁴) and E_ℓ (13.7, p ≈ 0.004), not in q² (5.8, p = 0.12); joint d² = 171 vs toy 99.9 % quantile 31. Holds for every SEM variant incl. LHCb | `output/10/summary.json` (shape_test) | step 10 | done |
+Narrative section in brackets.
+
+| ID | Claim | Produced by | Status |
+|----|-------|-------------|--------|
+| C1 | SEM from HFLAV: B_SEM = 9.26 / 8.55 %, gap 16.5 ± 2.5 % of inclusive, c_true = 6.07; shares D 24.6, D* 57.2, D** 14.8, D(*)ππ 3.1, D_s(*)K 0.3 % [1.2] | step 6 bundle, `data/sem_component_moments.json` | done |
+| C2 | Inclusive input: zero-threshold HQE moments m1–m3 with 12 000 likelihood toys; measured moments vs threshold [1.1, Fig. 1] | step 11 `hqe_moments.pdf` | done |
+| C3 | Inclusive inversion without SEM subtraction vs the SEM stack; allowed in all toys, no c_true needed [2.1] | step 8 | done |
+| C4 | Closure at N = 3 for D1'→D*η and 50 % Dℓν + 50 % Λc p̄ℓν; L1 0.02–0.08 in E_ℓ, q²; M_X² outside the allowed region in 21–63 % of toys; leading uncertainty B_gap [1.6, Fig. 2] | step 7, step 11 `closure_n3.pdf` | done |
+| C5 | M_X² gap moments allowed with the Belle II cocktail; PHSP D(*)ππ rejected (d² 20.9, p 0.002), bare EvtGen broad states (10.7, 0.009); robust against no Hammer for broad states, HQE M_X² unc. × 2, D1':D0* split, supports, LHCb-style cocktail. σ(B_incl) × 2 weakens to p 0.021 / 0.037. Open caveat: MC calibration of the measured M_X moments [2.5] | step 10 `variants`, `supports` | done |
+| C6 | Admissibility test: d² to the moment space (exact two-atom boundary), bootstrap p [1.5] | `lib/cone.py` | done |
+| C7 | Gap with the shape of one SEM mode (D, D*, D**, D(*)ππ, D_s(*)K) excluded: joint d² 196–246 at the nominal gap size (toys vary B_gap), 153–171 with the size free; D** fails only in q² (d² 33). Replaces the component and pair scans; the positive-mix fit is not in Paper 1 (D8) [2.3, Tab. 2] | step 10 `mode_shape_test` | done |
+| C8 | CDF bounds (LP): P(M_X² ≤ 10) ≥ 0.93; P(E_ℓ ≤ 0.5) ≤ 0.16, ≥ 60 % above 0.8 GeV; P(q² ≤ 4) ∈ [0.19, 0.79] [2.4, Fig. 7] | step 9 | done |
+| C9 | Support tests: Λc p̄ alone excluded by M_X² (≥ 95 % below threshold) and q² (≥ 17 % above endpoint); D_sK alone only disfavoured (6 % of toys) [2.4] | step 9 | done (coverage, power study incl. the reverse test todo) |
+| C10 | Minimum gap size: B_gap/B_incl > 0.065 at 95 % CL (M_X²; E_ℓ 0.035); means and variances alone give ≥ 0.11; admissible fraction of toys 78 % at nominal, 50 % at 0.13 [2.4, Fig. 8] | step 9 `gap_fraction_test`, `gap_fraction_scan` | done |
+| C11 | Gap mean/variance vs SEM, inclusive and SEM modes; same plane with candidate modes for reference; gap density peaks near M_X ≈ 2.4 GeV [2.2, 2.3, Figs. 4–6] | step 8 `gap_density.pdf`, step 11 `moment_plane_*.pdf` | done |
+| C12 | Robustness: LHCb-style cocktail (D** fractions 11874430/12873450, ISGW2 D**, higher D** instead of D(*)ππ, no D_sK) and alternative supports leave C5, C6, C13 unchanged; a too-narrow q² ≤ 6 support is rejected (d² 27.9). Open: LHCb absolute normalisation (I6), partial-BF cross-check (I5) | step 10 | done (I5, I6 open) |
+| C13 | A common BF shortfall is excluded: inclusive vs SEM d² 41.8 (M_X²), 13.7 (E_ℓ), 5.8 (q², p 0.12), joint 171, p < 0.001; for every SEM variant [2.3, Tab. 2] | step 10 `shape_test` | done |
 
 ## Pipeline fixes (2026-10-14)
 
@@ -57,10 +60,13 @@ Review rounds 1–2 (claude.ai artifacts) refer to the old outline and are not c
 
 ## Milestones
 
-- **M1** ~~C6~~ (done, step 10); C2 → pipeline.
-- **M2** ~~D6, C5 comparison, C7~~ (done, step 10); bootstrap-based component scan.
+- **M1** ~~C6~~ (done); ~~C2 → pipeline~~ (step 11).
+- **M2** ~~D6, C5 comparison, C7~~ (done, step 10; C7 now the single-mode shape test).
 - **M3** ~~C8, C10, C9 nominal~~ (done, step 9); C9 coverage and power study from the gap-mode samples.
-- **M4** C12; then new draft skeleton, reusing SEM construction, endpoint asymptotics,
+- **M3b** Restructure the pipeline by function (inputs, toys with one shared HQE/SEM toy pairing, closure, one
+  step per result, paper); steps 9, 10 and 11 now pair the toys with different seeds. Retire steps 4, 5 and the
+  threshold paths of steps 6-8.
+- **M4** ~~C12~~; new draft skeleton, reusing SEM construction, endpoint asymptotics,
   THMP appendix and introduction from `references/draft.tex`.
 
 ## Cocktail definitions for C12
@@ -77,7 +83,7 @@ LHCb (DecFiles Sim10, public): D*μν, Dμν CLN; D** cocktail ISGW2 with D1', D
 
 | # | Needed | From | Unblocks |
 |---|--------|------|----------|
-| I1 | Sign-off on this ledger, D3, D8 | Markus, Danny | everything |
+| I1 | Sign-off on `paper/narrative.pdf`, this ledger, D3, D8 | Markus, Danny | everything |
 | I2 | D6: BF split of each NR D(*)ππ final state over D1' and D0* (50:50 assumed; C5/C6 shown insensitive) | Markus / you | systematic only |
 | I3 | ~~D7~~ settled (BLPRXP) | — | — |
 | I4 | Confirm `inputs/hqe_likelihood_toys/likelihood_toys.h5` is the 2609.28752 release; is m4 (q²) available at zero threshold? | Markus | C2, C6, C8 |

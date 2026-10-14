@@ -5,7 +5,8 @@
                   residual moments (linear programs), nominal and per toy (claim C8)
   Support tests   minimal gap fraction outside the kinematic range of a single final-state class
                   (Lambda_c pbar, D_s K), per observable; > 0 means the class alone cannot be the gap (C9)
-  Gap-fraction    admissible fraction of toys vs the assumed B_gap/B_incl (C10)
+  Gap-fraction    admissible fraction of toys vs the assumed B_gap/B_incl, and the bootstrap p of the
+                  admissibility test (lib/cone.py) with its 95% CL lower limit on B_gap/B_incl
 
 Toys pair the step-6 SEM toys (stat+FF+BF per mode) and gap-normalisation draws with HQE-fit toys.
 Reads the step-6 bundle only. Writes output/9/summary.json and figures/9/.
@@ -27,6 +28,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from lib.asimov import MAX_ORDER
 from lib.bundle import Bundle, default_path, output_root
+from lib.cone import test
 from lib.maxent import hausdorff_check, raw_to_mu01
 from lib.systematics import bf_gap_sigma, c_true
 
@@ -34,7 +36,7 @@ OBS = ["mx2", "el", "q2"]
 M_B = 5.27934
 # single-class hypotheses: lightest final state; the class lives at M_X^2 >= m^2, q^2 <= (M_B-m)^2, E_l <= (M_B^2-m^2)/(2 M_B)
 CLASSES = {"LcP": 2.28646 + 0.93827, "DsK": 1.96835 + 0.49368}
-QUERIES = {"el": [0.5, 1.0, 1.5], "q2": [2.0, 4.0, 6.0, 8.0], "mx2": [6.0, 8.0, 10.0]}
+QUERIES = {"el": [0.5, 0.8, 1.0, 1.5], "q2": [2.0, 4.0, 6.0, 8.0], "mx2": [6.0, 8.0, 10.0]}
 TG = np.linspace(0, 1, 401)
 A = np.stack([TG ** k for k in range(4)])
 
@@ -116,6 +118,13 @@ def run(B, n_toys, seed):
                                         f_min_50pct={o: float(fs[np.argmax(np.array(scan[o]) >= 0.5)]) if max(scan[o]) >= 0.5
                                                      else None for o in OBS})
     print("[scan] f at 50% admissible: " + ", ".join(f"{o} {v}" for o, v in summary["gap_fraction_scan"]["f_min_50pct"].items()))
+    fp = np.round(np.arange(0.03, 0.2501, 0.005), 3)
+    pscan = {o: [test(mu01((1 / f) * incl[o][0] - (1 / f - 1) * sem[o][0], o)[1:],
+                      np.array([mu01(r, o)[1:] for r in (1 / f) * incl[o][1] - (1 / f - 1) * sem[o][1]]))["p"] for f in fp]
+             for o in OBS}
+    lim = {o: next((float(f) for f, p in zip(fp, pscan[o]) if p >= 0.05), None) for o in OBS}
+    summary["gap_fraction_test"] = dict(f=fp.tolist(), p=pscan, limit_95=lim)
+    print("[scan] 95% CL lower limit on B_gap/B_incl: " + ", ".join(f"{o} {v}" for o, v in lim.items()), flush=True)
 
     od, fd = output_root(cfg, HERE) / "9", HERE / "figures" / "9"
     od.mkdir(parents=True, exist_ok=True)

@@ -1,29 +1,25 @@
 #!/usr/bin/env python3
-"""Step 10: admissibility tests of the threshold-0 residual moments and SEM variations (claims C5-C7, C12).
+"""Step 10: admissibility tests of the threshold-0 residual moments, SEM lineshape variants and shape tests.
 
-  d^2     Mahalanobis distance (toy covariance) from the residual moments m1..m3, scaled to the data support,
-          to the moment space of probability measures; 0 when admissible. For three moments on [0, 1] its
-          boundary is the set of two-point measures w delta_e + (1-w) delta_t, e in {0, 1}: exact projection
-          by a scan in t with w in closed form. Jointly: block coordinate descent with the full 9x9 covariance.
-  p       parametric bootstrap: toy fluctuations re-centred on the closest admissible point. p_chi2 =
-          P(chi2_k >= d^2) is the Gaussian approximation; the toys are not Gaussian (c_true = B_incl/B_gap has a
-          heavy tail), and for one observable p_chi2 is smaller than the bootstrap p, so the bootstrap p is the result.
-  power   for SEM variants: distribution of the toy-by-toy p (toys fluctuate around the observed moments).
-
-SEM variants change components with fixed BFs (shape swaps) or with changed shares; the SEM moments are linear in
-the component weights, B_SEM and hence c_true follow the shares. Components and their moment variants come from
-data/sem_component_moments.json (built with --build-moments from the cocktail, the retired PHSP cocktail and the
-LHCb-style samples in output/1/lhcb):
-  phsp_Dpipi        NR D(*)pipi with the 5-body PHSP lineshape
-  split_Dp1_f       D1':D0* weight fraction of NR D(*)pipi set to f
-  noFF_broad        no Hammer weight for the broad states (D0*, D1', NR D(*)pipi), MCAmbulance kept
-  bare_evtgen_broad neither Hammer nor MCAmbulance for the broad states (EvtGen lineshape as generated)
-  hqe_mx2_x2        HQE M_X^2 moment fluctuations doubled
-  lhcb_*            LHCb-style cocktail: D** fractions (11874430/12873450), ISGW2 D** shapes, higher D** (D(2S),
-                    D*(2S), D(2750), D(3000) -> D* pi pi) in place of NR D(*)pipi, no D_s K; and all together
-Shape test ("common shortfall"): if all SEM BFs were low by a common factor the gap would have the SEM shape, i.e.
-the inclusive and SEM moments would agree; d^2 between them with the toy covariance, bootstrap p (no c_true).
-Scans (C7): one component scaled by s, and pairs scaled by (s1, s2); joint p_chi2 (k = 9) on a grid.
+  Admissibility  d^2 to the moment space of probability measures and its bootstrap p (lib/cone.py), per observable
+                 and jointly, for the nominal SEM and its variants.
+  Variants       change components with fixed BFs (shape swaps) or with changed shares; the SEM moments are linear
+                 in the component weights, B_SEM and hence c_true follow the shares. Components and their moment
+                 variants come from data/sem_component_moments.json (built with --build-moments from the cocktail,
+                 the retired PHSP cocktail and the LHCb-style samples in output/1/lhcb):
+    phsp_Dpipi        D(*)pipi with the 5-body PHSP lineshape
+    split_Dp1_f       D1':D0* weight fraction of D(*)pipi set to f
+    noFF_broad        no Hammer weight for the broad states (D0*, D1', D(*)pipi), MCAmbulance kept
+    bare_evtgen_broad neither Hammer nor MCAmbulance for the broad states (EvtGen lineshape as generated)
+    hqe_mx2_x2        HQE M_X^2 moment fluctuations doubled
+    *_incl_unc_x2     B_gap fluctuations scaled as if the B_incl uncertainty were doubled
+    lhcb_*            LHCb-style cocktail: D** fractions (11874430/12873450), ISGW2 D** shapes, higher D** (D(2S),
+                      D*(2S), D(2750), D(3000) -> D* pi pi) in place of D(*)pipi, no D_s K; and all together
+  Supports       nominal admissibility for the alternative data supports in SUPPORTS
+  Shape tests    inclusive moments vs a model, d^2 with the toy covariance, no c_true amplification:
+    shape_test        gap with the SEM shape (all SEM BFs low by a common factor): inclusive vs SEM moments
+    mode_shape_test   gap with the shape of one SEM mode X: inclusive vs (1-f) SEM + f X, at the nominal gap
+                      fraction f (toys vary it with B_gap) or with f free in [0, 1] (closed-form fit, bootstrap refit)
 
 Usage:
   python3 10_cone_test.py [--bundle FILE] [--n-toys 2000] [--support OBS=LO,HI ...]
@@ -37,75 +33,24 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import chi2, norm
+from scipy.stats import norm
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from lib.asimov import MAX_ORDER
 from lib.bundle import Bundle, default_path, output_root
-from lib.maxent import hausdorff_check, raw_to_mu01
+from lib.cone import test
+from lib.maxent import raw_to_mu01
+from lib.systematics import bf_gap_sigma, c_true
 
 OBS = ["mx2", "el", "q2"]
 COMP_JSON = HERE / "data" / "sem_component_moments.json"
-SCALES = np.round(np.arange(0.0, 3.001, 0.05), 2)
-GRID2 = np.round(np.arange(0.0, 2.501, 0.1), 2)
-PAIRS = [("D*", "D"), ("D*", "D**"), ("D", "D**"), ("D**", "D(*) pi pi")]
 DSS = ("D1", "D0st", "Dp1", "D2st")
 LHCB_DSS = {"D0st": (0.2941 + 0.2970) / 2, "D1": (0.2941 + 0.2772) / 2, "Dp1": (0.2647 + 0.3069) / 2, "D2st": (0.1471 + 0.1188) / 2}
 LHCB_HIGHER = {"D2S": 0.45, "Dst2S": 0.05, "D2750": 0.45, "D3000": 0.05}
-TG = np.linspace(0, 1, 4001)
-G = np.stack([TG, TG ** 2, TG ** 3], 1)
-
-
-def project(target, P):
-    """Closest point (metric P) to target in the moment space of probability measures on [0, 1]."""
-    if hausdorff_check(np.r_[1.0, target])[0]:
-        return target
-    L = np.linalg.cholesky(P).T
-    best = (np.inf, None)
-    for e in (0.0, 1.0):
-        D = np.array([e, e ** 2, e ** 3]) - G
-        R, LD = (L @ (target - G).T).T, (L @ D.T).T
-        w = np.clip(np.sum(R * LD, 1) / np.maximum(np.sum(LD * LD, 1), 1e-300), 0, 1)
-        d2 = np.sum((R - w[:, None] * LD) ** 2, 1)
-        i = int(np.argmin(d2))
-        if d2[i] < best[0]:
-            best = (d2[i], G[i] + w[i] * D[i])
-    return best[1]
-
-
-def distance(mu, P, nb, iters=50):
-    """d^2 from mu (scaled moments 1..3 per block) to the product of moment spaces, metric P."""
-    nu = mu.copy()
-    for _ in range(iters if nb > 1 else 1):
-        prev = nu.copy()
-        for i in range(nb):
-            s, o = slice(3 * i, 3 * i + 3), np.r_[0:3 * i, 3 * i + 3:3 * nb]
-            target = mu[s] + np.linalg.solve(P[s, s], P[s][:, o] @ (mu[o] - nu[o])) if nb > 1 else mu[s]
-            nu[s] = project(target, P[s, s])
-        if np.max(np.abs(nu - prev)) < 1e-10:
-            break
-    r = mu - nu
-    return float(r @ P @ r), nu
-
-
-def test(mu_nom, mu_toys, power=False):
-    nb = len(mu_nom) // 3
-    P = np.linalg.inv(np.cov(mu_toys, rowvar=False))
-    d2, nu = distance(mu_nom, P, nb)
-    pc = float(chi2.sf(d2, len(mu_nom)))
-    out = dict(d2=d2, p_chi2=pc)
-    if d2 < 1e-9:
-        return out | dict(d2=0.0, p=1.0, z=0.0)
-    boot = np.sort([distance(nu + dm, P, nb)[0] for dm in mu_toys - mu_toys.mean(0)])
-    p = float(np.mean(boot >= d2))
-    out |= dict(p=p, z=float(norm.isf(max(p, 0.5 / len(boot)))))
-    if power:
-        pt = 1 - np.searchsorted(boot, [distance(m, P, nb)[0] for m in mu_toys[:500]], side="left") / len(boot)
-        out |= dict(p_toys_median=float(np.median(pt)), frac_toys_p_below_0p05=float(np.mean(pt < 0.05)))
-    return out
-
-
+# alternative data supports for the nominal admissibility test; q2 <= 6 is deliberately too narrow
+SUPPORTS = {"el_2.26": {"el": [0.0, 2.26]}, "el_2.40": {"el": [0.0, 2.4]}, "mx2_12": {"mx2": [3.2, 12.0]},
+            "mx2_20": {"mx2": [3.2, 20.0]}, "q2_12.5": {"q2": [0.0, 12.5]}, "q2_6_wrong": {"q2": [0.0, 6.0]}}
 def build_moments(phsp_cocktail):
     """Component moments (raw m1..m3 of Mx2, El, q2) and SEM weight shares, with weight variants."""
     import pandas as pd
@@ -181,50 +126,42 @@ def load_cfg():
 
 
 def run(B, n_toys, seed, support=()):
-    import matplotlib
-    matplotlib.use("Agg")
-    import plothist  # noqa: F401
-    import matplotlib.pyplot as plt
-
     cfg, T = B.cfg, B.toys
     for spec in support:
         o, v = spec.split("=")
         cfg["data"]["support"][o] = [float(x) for x in v.split(",")]
     sup, sysc = cfg["data"]["support"], cfg["systematics"]
     b_incl, bf_gap = sysc["bf_incl"], float(T["bf_gap"])
-    from lib.systematics import c_true
     c0 = float(c_true(sysc, bf_gap))
     rng = np.random.default_rng(seed)
     n = min(n_toys, len(T["z_gap"]))
     ih = rng.choice(len(T["hqe_toys"]), n, replace=False)
-    c = c_true(sysc, bf_gap, T["z_gap"][:n])[:, None]
+    z = T["z_gap"][:n]
     idx = np.r_[[MAX_ORDER * k + j for k in range(3) for j in range(3)]]
     sem_c, sem_t = T["nom_sem0"][idx], T["sem0_stat_ff_bfmode"][:n][:, idx]
     inc_c, inc_t = T["hqe_central"], T["hqe_toys"][ih]
-    scale = lambda raw: np.concatenate([raw_to_mu01(np.c_[np.ones(len(raw)), raw[:, 3 * k:3 * k + 3]].T, *sup[o])[1:].T
+    scale = lambda raw, s=sup: np.concatenate([raw_to_mu01(np.c_[np.ones(len(raw)), raw[:, 3 * k:3 * k + 3]].T, *s[o])[1:].T
                                         for k, o in enumerate(OBS)], axis=1)
     C = json.load(open(COMP_JSON))
     m = lambda k, tag="": np.array(C[k]["moments" + ("_" + tag if tag else "")])
     sh = lambda k: C[k]["share"]
-    cats = {"D": (sh("D"), m("D")), "D*": (sh("D*"), m("D*")), "D(*) pi pi": (sh("D(*) pi pi"), m("D(*) pi pi")),
-            "Ds(*) K": (sh("Ds(*) K"), m("Ds(*) K"))}
     s_dss = sum(sh("D**:" + k) for k in DSS)
-    cats["D**"] = (s_dss, sum(sh("D**:" + k) * m("D**:" + k) for k in DSS) / s_dss)
+    modes = {k: m(k) for k in ("D", "D*", "D(*) pi pi", "Ds(*) K")} | {"D**": sum(sh("D**:" + k) * m("D**:" + k) for k in DSS) / s_dss}
+    # doubling sigma(B_incl): sigma(B_gap)^2 = sigma(B_SEM)^2 + sigma(B_incl)^2 -> + 3 sigma(B_incl)^2
+    s_gap, s_incl = bf_gap_sigma(sysc), sysc["n_leptons"] * sum(load_cfg()["systematics"]["bf_incl_unc"].values())
+    g_incl = float(np.sqrt(s_gap ** 2 + 3 * s_incl ** 2) / s_gap)
 
-    def residuals(changes, inc_mx2_scale=1.0):
+    def residuals(changes, inc_mx2_scale=1.0, zscale=1.0, s=sup):
         """Residual moments (nominal, toys) for changes = [(share, moments), ...] added to the nominal SEM
-        (negative share removes); None if the SEM then exceeds the inclusive rate."""
+        (negative share removes)."""
         k = 1 + sum(sv for sv, _ in changes)
         add = sum((sv * mv for sv, mv in changes), np.zeros(9))
-        gap = b_incl - (b_incl - bf_gap) * k
-        if gap <= 0:
-            return None
-        cs = b_incl / gap
-        ct = cs / c0 * c
+        cs = b_incl / (b_incl - (b_incl - bf_gap) * k)
+        ct = cs / c0 * c_true(sysc, bf_gap, zscale * z)[:, None]
         it = inc_t.copy()
         it[:, :3] = inc_c[:3] + inc_mx2_scale * (inc_t[:, :3] - inc_c[:3])
-        return (scale((cs * inc_c - (cs - 1) * (sem_c + add) / k)[None])[0],
-                scale(ct * it - (ct - 1) * (sem_t + add) / k), cs)
+        return (scale((cs * inc_c - (cs - 1) * (sem_c + add) / k)[None], s)[0],
+                scale(ct * it - (ct - 1) * (sem_t + add) / k, s), cs)
 
     swap = lambda comps, tag: [x for k in comps for x in ((-sh(k), m(k)), (sh(k), m(k, tag)))]
     s_nr = sh("D(*) pi pi")
@@ -233,98 +170,75 @@ def run(B, n_toys, seed, support=()):
     lhcb_isgw2 = [(-sh("D**:" + k), m("D**:" + k)) for k in DSS] + [(sh("D**:" + k), np.array(lhcb[k])) for k in DSS if k in lhcb]
     lhcb_higher = [(-s_nr, m("D(*) pi pi"))] + [(s_nr * f, np.array(lhcb[k])) for k, f in LHCB_HIGHER.items() if k in lhcb]
     lhcb_nodsk = [(-sh("Ds(*) K"), m("Ds(*) K"))]
-    variants = {"nominal": ([], 1.0),
-                "phsp_Dpipi": ([(-s_nr, m("D(*) pi pi")), (s_nr, m("D(*) pi pi", "phsp"))], 1.0),
-                "noFF_broad": (swap(["D**:D0st", "D**:Dp1", "D(*) pi pi"], "noFF"), 1.0),
-                "bare_evtgen_broad": (swap(["D**:D0st", "D**:Dp1", "D(*) pi pi"], "noMCA_noFF"), 1.0),
-                "hqe_mx2_x2": ([], 2.0)}
+    phsp = [(-s_nr, m("D(*) pi pi")), (s_nr, m("D(*) pi pi", "phsp"))]
+    bare = swap(["D**:D0st", "D**:Dp1", "D(*) pi pi"], "noMCA_noFF")
+    variants = {"nominal": ([], 1.0, 1.0), "phsp_Dpipi": (phsp, 1.0, 1.0),
+                "noFF_broad": (swap(["D**:D0st", "D**:Dp1", "D(*) pi pi"], "noFF"), 1.0, 1.0),
+                "bare_evtgen_broad": (bare, 1.0, 1.0), "hqe_mx2_x2": ([], 2.0, 1.0),
+                "phsp_Dpipi_incl_unc_x2": (phsp, 1.0, g_incl), "bare_evtgen_broad_incl_unc_x2": (bare, 1.0, g_incl)}
     for f in (0.0, 0.25, 0.75, 1.0):
         variants[f"split_Dp1_{f:.2f}"] = ([(-s_nr, m("D(*) pi pi")),
-                                           (s_nr, f * m("D(*) pi pi", "parent_Dp1") + (1 - f) * m("D(*) pi pi", "parent_D0st"))], 1.0)
+                                           (s_nr, f * m("D(*) pi pi", "parent_Dp1") + (1 - f) * m("D(*) pi pi", "parent_D0st"))], 1.0, 1.0)
     if len(lhcb) == 8:
-        variants |= {"lhcb_dss_fractions": (lhcb_dss_frac, 1.0), "lhcb_isgw2_dss": (lhcb_isgw2, 1.0),
-                     "lhcb_higher_dss": (lhcb_higher, 1.0), "lhcb_no_dsk": (lhcb_nodsk, 1.0),
+        variants |= {"lhcb_dss_fractions": (lhcb_dss_frac, 1.0, 1.0), "lhcb_isgw2_dss": (lhcb_isgw2, 1.0, 1.0),
+                     "lhcb_higher_dss": (lhcb_higher, 1.0, 1.0), "lhcb_no_dsk": (lhcb_nodsk, 1.0, 1.0),
                      "lhcb_all": ([(-sh("D**:" + k), m("D**:" + k)) for k in DSS]
-                                  + [(s_dss * f, np.array(lhcb[k])) for k, f in LHCB_DSS.items()] + lhcb_higher + lhcb_nodsk, 1.0)}
-    summary = dict(n_toys=n, c_true=c0, variants={}, shape_test={})
-    for name, (changes, infl) in variants.items():
-        mu, mt, cs = residuals(changes, infl)
-        res = {o: test(mu[3 * i:3 * i + 3], mt[:, 3 * i:3 * i + 3], power=name != "nominal") for i, o in enumerate(OBS)}
-        res["joint"] = test(mu, mt, power=name != "nominal")
-        summary["variants"][name] = dict(c_true=cs, **res)
-        print(f"[{name}] c_true {cs:.2f}; " + "; ".join(f"{k}: d2 {v['d2']:.2f} p {v['p']:.4f}" for k, v in res.items()), flush=True)
-        # shape test: inclusive vs SEM moments directly (gap with the SEM shape)
-        k = 1 + sum(sv for sv, _ in changes)
-        add = sum((sv * mv for sv, mv in changes), np.zeros(9))
-        it = inc_t.copy()
-        it[:, :3] = inc_c[:3] + infl * (inc_t[:, :3] - inc_c[:3])
-        dl, dt = scale(inc_c[None])[0] - scale(((sem_c + add) / k)[None])[0], scale(it) - scale((sem_t + add) / k)
-        st = {}
-        for key, sl in [(o, slice(3 * i, 3 * i + 3)) for i, o in enumerate(OBS)] + [("joint", slice(0, 9))]:
+                                  + [(s_dss * f, np.array(lhcb[k])) for k, f in LHCB_DSS.items()] + lhcb_higher + lhcb_nodsk, 1.0, 1.0)}
+    SL = [(o, slice(3 * i, 3 * i + 3)) for i, o in enumerate(OBS)] + [("joint", slice(0, 9))]
+
+    def compare(dl, dt):
+        """d^2 of dl with the covariance of the toys dt, and p from the re-centred toys."""
+        out = {}
+        for key, sl in SL:
             P = np.linalg.inv(np.cov(dt[:, sl], rowvar=False))
             fl = dt[:, sl] - dt[:, sl].mean(0)
             d2, d2t = float(dl[sl] @ P @ dl[sl]), np.einsum("ij,jk,ik->i", fl, P, fl)
             p = float(np.mean(d2t >= d2))
-            st[key] = dict(d2=d2, p=p, z=float(norm.isf(max(p, 0.5 / len(d2t)))))
+            out[key] = dict(d2=d2, p=p, z=float(norm.isf(max(p, 0.5 / len(d2t)))))
+        return out
+
+    summary = dict(n_toys=n, c_true=c0, g_incl_unc_x2=g_incl, variants={}, supports={}, shape_test={}, mode_shape_test={})
+    for name, alt in SUPPORTS.items():
+        mu, mt, _ = residuals([], s=sup | alt)
+        summary["supports"][name] = {o: test(mu[sl], mt[:, sl]) for o, sl in SL}
+        print(f"[support {name}] " + "; ".join(f"{k}: d2 {v['d2']:.2f} p {v['p']:.4f}" for k, v in summary["supports"][name].items()), flush=True)
+    for name, (changes, infl, zs) in variants.items():
+        mu, mt, cs = residuals(changes, infl, zs)
+        res = {o: test(mu[sl], mt[:, sl], power=name != "nominal") for o, sl in SL}
+        summary["variants"][name] = dict(c_true=cs, **res)
+        print(f"[{name}] c_true {cs:.2f}; " + "; ".join(f"{k}: d2 {v['d2']:.2f} p {v['p']:.4f}" for k, v in res.items()), flush=True)
+        if zs != 1.0:
+            continue
+        k = 1 + sum(sv for sv, _ in changes)
+        add = sum((sv * mv for sv, mv in changes), np.zeros(9))
+        it = inc_t.copy()
+        it[:, :3] = inc_c[:3] + infl * (inc_t[:, :3] - inc_c[:3])
+        st = compare(scale(inc_c[None])[0] - scale(((sem_c + add) / k)[None])[0], scale(it) - scale((sem_t + add) / k))
         summary["shape_test"][name] = st
-        print(f"   shape test (gap = SEM shape): " + "; ".join(f"{k}: d2 {v['d2']:.1f} p {v['p']:.4f}" for k, v in st.items()), flush=True)
+        print("   shape test (gap = SEM shape): " + "; ".join(f"{k}: d2 {v['d2']:.1f} p {v['p']:.4f}" for k, v in st.items()), flush=True)
 
-    def joint_p(changes):
-        r = residuals(changes)
-        if r is None:
-            return np.nan
-        mu, mt, _ = r
-        return float(chi2.sf(distance(mu, np.linalg.inv(np.cov(mt, rowvar=False)), 3)[0], 9))
+    # gap with the shape of one SEM mode X; S is linear on measures, so model = S(SEM) + f (S(X) - S(SEM))
+    f0, ft = bf_gap / b_incl, 1 / c_true(sysc, bf_gap, z)[:, None]
+    s_inc, s_sem, s_inct, s_semt = scale(inc_c[None])[0], scale(sem_c[None])[0], scale(inc_t), scale(sem_t)
+    for name, mx in modes.items():
+        s_x = scale(mx[None])[0]
+        fixed = compare(s_inc - s_sem - f0 * (s_x - s_sem), s_inct - s_semt - ft * (s_x - s_semt))
+        free = {}
+        for key, sl in SL:
+            a, b, dt = s_inc[sl] - s_sem[sl], (s_x - s_sem)[sl], (s_inct - s_semt)[:, sl]
+            P = np.linalg.inv(np.cov(dt, rowvar=False))
+            fit = lambda t: (lambda f: (float((t - f * b) @ P @ (t - f * b)), f))(float(np.clip(t @ P @ b / (b @ P @ b), 0, 1)))
+            d2, f = fit(a)
+            boot = np.array([fit(f * b + e)[0] for e in dt - dt.mean(0)])
+            free[key] = dict(d2=d2, f=f, p=float(np.mean(boot >= d2)))
+        summary["mode_shape_test"][name] = dict(fixed=fixed, free=free)
+        print(f"[mode {name}] fixed f: " + "; ".join(f"{k}: d2 {v['d2']:.1f} p {v['p']:.4f}" for k, v in fixed.items())
+              + " | free f: " + "; ".join(f"{k}: d2 {v['d2']:.1f} f {v['f']:.3f} p {v['p']:.4f}" for k, v in free.items()), flush=True)
 
-    scan = {}
-    for cat, (s0, m0) in cats.items():
-        ps = [joint_p([((sc - 1) * s0, m0)]) for sc in SCALES]
-        ok = [sc for sc, p in zip(SCALES, ps) if np.isfinite(p) and p > 0.05]
-        closes = 1 + (bf_gap / b_incl) / ((1 - bf_gap / b_incl) * s0)
-        scan[cat] = dict(share=s0, allowed=[float(min(ok)), float(max(ok))] if ok else None, closes_gap_at=closes,
-                         s=SCALES.tolist(), p=[None if not np.isfinite(p) else p for p in ps])
-        print(f"[scan {cat}] allowed {scan[cat]['allowed']}, closes the gap alone at {closes:.2f}", flush=True)
-    pairs = {}
-    for a, b in PAIRS:
-        grid = np.array([[joint_p([((s1 - 1) * cats[a][0], cats[a][1]), ((s2 - 1) * cats[b][0], cats[b][1])])
-                          for s2 in GRID2] for s1 in GRID2])
-        pairs[f"{a}|{b}"] = dict(s=GRID2.tolist(), p=np.where(np.isfinite(grid), grid, -1).tolist())
-        print(f"[pair {a} x {b}] allowed fraction of grid {np.mean(np.nan_to_num(grid, nan=0) > 0.05):.2f}", flush=True)
-    summary |= dict(component_scan=scan, pair_scan=pairs)
-
-    od, fd = output_root(cfg, HERE) / "10", HERE / "figures" / "10"
+    od = output_root(cfg, HERE) / "10"
     od.mkdir(parents=True, exist_ok=True)
-    fd.mkdir(parents=True, exist_ok=True)
     json.dump(summary, open(od / "summary.json", "w"), indent=1)
-
-    fig, ax = plt.subplots(figsize=(10, 7.2), dpi=200)
-    for cat, v in scan.items():
-        x = [s for s, p in zip(v["s"], v["p"]) if p is not None]
-        ax.plot(x, [max(p, 1e-12) for p in v["p"] if p is not None], lw=2.6, label=f"{cat} ({v['share']:.1%})")
-    ax.axhline(0.05, color="0.5", ls="--", lw=1.2)
-    ax.axvline(1, color="0.5", ls=":", lw=1.2)
-    ax.set_yscale("log")
-    ax.set_ylim(1e-8, 2)
-    ax.set_xlim(SCALES[0], SCALES[-1])
-    ax.set_xlabel("scale of the SEM component normalisation", fontsize=24)
-    ax.set_ylabel(r"joint $p$ ($\chi^2_9$ approximation)", fontsize=24)
-    ax.legend(fontsize=17, frameon=False, loc="lower left")
-    fig.tight_layout()
-    fig.savefig(fd / "component_scan.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(1, len(PAIRS), figsize=(7 * len(PAIRS), 6.5), dpi=200)
-    for ax, (a, b) in zip(axes, PAIRS):
-        g = np.array(pairs[f"{a}|{b}"]["p"])
-        ax.contourf(GRID2, GRID2, np.where(g < 0, np.nan, g).T, levels=[0, 0.003, 0.05, 1.01], colors=["#d62728", "#ff9896", "#c7e9c0"])
-        ax.contour(GRID2, GRID2, np.where(g < 0, 0, g).T, levels=[0.05], colors="k", linewidths=1.5)
-        ax.plot(1, 1, "k*", ms=14)
-        ax.set_xlabel(f"scale {a}", fontsize=20)
-        ax.set_ylabel(f"scale {b}", fontsize=20)
-    fig.tight_layout()
-    fig.savefig(fd / "pair_scan.pdf", bbox_inches="tight")
-    plt.close(fig)
-    print(f"-> {od}, {fd}")
+    print(f"-> {od}")
 
 
 def main():
