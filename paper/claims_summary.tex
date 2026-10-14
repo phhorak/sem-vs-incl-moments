@@ -11,7 +11,7 @@
 \newcommand{\GeV}{\,\mathrm{GeV}}
 \setlist{itemsep=1pt,topsep=3pt}
 \title{Paper 1: claims ledger with current numbers}
-\author{Status 14 October 2026, afternoon \quad (\texttt{clean} @ \texttt{7b6c27f}, source \texttt{paper/CLAIMS.md})}
+\author{Status 14 October 2026, evening \quad (\texttt{clean} @ \texttt{d51c217}, source \texttt{paper/CLAIMS.md})}
 \date{}
 \begin{document}
 \maketitle
@@ -126,10 +126,28 @@ residual $E_\ell$ / $q^2$ admissible & $98\%$ / $99.7\%$ & $100\%$ / $100\%$ & \
 \bottomrule
 \end{tabular}
 \end{center}
-\textbf{Significance (step 10):} replacing the $D^{(*)}\pi\pi$ component moments of the nominal SEM by those of the 5-body
-PHSP lineshape makes the $M_X^2$ residual inadmissible with cone distance $d^2 = 20.9$, bootstrap $p = 0.002$ ($2.9\sigma$);
-$E_\ell$ and $q^2$ stay admissible. The $M_X^2$ moments thus reject the PHSP lineshape. The nominal result does not depend
-on the $D_1'$:$D_0^*$ split (0 to 1) or on the support choice (C12).
+\textbf{Significance and lineshape dependence (step 10):} SEM variants with fixed BFs, only shapes changed:
+\begin{center}\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{8.6cm}cc}
+\toprule
+SEM variant & $M_X^2$ residual & $E_\ell$, $q^2$ \\
+\midrule
+nominal (Belle~II cocktail) & admissible & admissible \\
+no Hammer weight for broad states ($D_0^*$, $D_1'$, $D^{(*)}\pi\pi$) & admissible & admissible \\
+HQE $M_X^2$ moment uncertainty $\times2$ & admissible & admissible \\
+$D_1'$:$D_0^*$ split 0, $\frac14$, $\frac34$, 1 & admissible & admissible \\
+LHCb-style cocktail (C12) & admissible & admissible \\
+\midrule
+PHSP $D^{(*)}\pi\pi$ & $d^2=20.9$, $p=0.002$ & admissible \\
+bare EvtGen broad states (no MCAmbulance, no Hammer) & $d^2=10.7$, $p=0.009$ & admissible \\
+\bottomrule
+\end{tabular}
+\end{center}
+The PHSP rejection is stable against the data fluctuations: it is rejected ($p<0.05$) in all toys.
+The $M_X^2$ moments probe the high-mass tails of the broad states: they are consistent with the inclusive data only with
+resonant $D^{(*)}\pi\pi$ and with the MCAmbulance phase-space correction of the broad lineshapes. (Switching off
+MCAmbulance alone, with Hammer kept, exposes Hammer weights up to $10^5$ far off-shell and is not a physical variant.)
+Open caveat: the MC calibration of the measured $M_X$ moments (Markus's list).
 
 \paragraph{C6 \quad Admissibility as a test \hfill \done{} (step 10)}
 Statistic: Mahalanobis distance $d^2$ (toy covariance) from the residual moments $m_{1..3}$, scaled to the support, to the
@@ -152,6 +170,7 @@ The toys are not Gaussian ($c_\text{true} = \mathcal{B}_\text{incl}/\mathcal{B}_
 $\chi^2_3$ approximation gives $p = 1.1\times10^{-4}$ for the PHSP case, smaller than the bootstrap, so it is not used.
 
 \paragraph{C11 \quad Where the gap sits \hfill \proto{} (\texttt{moment\_plane\_clean.py}, rerun 14 Oct)}
+\emph{The comparison with explicit candidate modes below belongs to Paper~2 (D8); Paper~1 keeps the gap vs SEM and inclusive.}
 Gap mean and variance at zero threshold, $68\%$ toy intervals (HQE $\times$ SEM stat+FF+BF toys), and candidate modes:
 
 \begin{center}\small
@@ -186,8 +205,9 @@ candidate modes. Grey: no positive density on the data support.}
 \end{figure}
 
 \begin{figure}[h]\centering
-\includegraphics[width=0.8\linewidth]{gap_density_hqe.pdf}
-\caption{C11: MaxEnt inversion of the zero-threshold residual moments ($N=3$, endpoint priors), $68\%$ toy band.
+\includegraphics[width=\linewidth]{8/gap_density.pdf}
+\caption{C11: MaxEnt inversion of the zero-threshold residual moments ($N=3$, endpoint priors for $E_\ell$ and $q^2$),
+$68\%$ toy band (step 8). With the new SEM the $M_X^2$ moments are admissible; the gap peaks near $M_X\approx2.4\GeV$.
 Illustrative only (D4).}
 \end{figure}
 
@@ -281,14 +301,44 @@ $\mathcal{B}_\text{gap}/\mathcal{B}_\text{incl}\gtrsim0.13$, set by $M_X^2$ (the
 \caption{C10: admissible fraction of toys vs the assumed gap fraction; band: nominal $\pm1\sigma$.}
 \end{figure}
 
-\paragraph{C12 \quad Robustness \hfill partly \done{}}
-C5/C6 unchanged for $D_1'$:$D_0^*$ split 0--1 and for supports $E_\ell\le2.26$ or $2.4\GeV$, $M_X^2\le12$ or $20\GeV^2$,
-$q^2\le12.5\GeV^2$ (the PHSP violation is a negative variance, independent of the support). A deliberately wrong support
-($q^2\le6\GeV^2$) is rejected ($d^2=30$), as it should be.
+\paragraph{C13 \quad A common BF shortfall is excluded \hfill \done{} (step 10)}
+If all SEM BFs were low by one factor, the gap would have the SEM shape and the inclusive and SEM moments would agree.
+Test: $d^2$ between the scaled inclusive (HQE) and SEM moments with the toy covariance (no $c_\text{true}$ involved).
+\begin{center}\small
+\begin{tabular}{lcccc}
+\toprule
+ & $M_X^2$ & $E_\ell$ & $q^2$ & joint \\
+\midrule
+$d^2$ & 41.8 & 13.7 & 5.8 & 171 \\
+toy $99.9\%$ quantile & 21.6 & 18.3 & 16.6 & 31.2 \\
+$p$ & $<5\times10^{-4}$ & $\approx0.004$ & 0.12 & $\ll5\times10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The gap is not ``more of the same SEM'': its shape differs from the SEM in $M_X^2$ (it peaks near $M_X\approx2.4\GeV$) and in
+$E_\ell$, while in $q^2$ it is SEM-like. This holds for every SEM variant above, including the LHCb-style cocktail. Combined
+with C7 (no single component can fill the gap) this is Paper~1's answer to ``is the gap real, or are the BFs off?'' within
+positivity; how plausible specific BF pulls are is Paper~2 (likelihood with HFLAV priors).
+
+\begin{figure}[h]\centering
+\includegraphics[width=\linewidth]{10/pair_scan.pdf}
+\caption{C7: joint $p$ ($\chi^2_9$ approximation) for two SEM components scaled together. Green $p>0.05$, light red
+$0.003<p<0.05$, red $p<0.003$; white: the SEM would exceed the inclusive rate. Star: nominal.}
+\end{figure}
+
+\paragraph{C12 \quad Robustness \hfill mostly \done{}}
+LHCb-style cocktail from the LHCb DecFiles: $D^{**}$ fractions of 11874430/12873450, ISGW2 $D^{**}$ shapes (MCAmbulance ISGW2
+correction for $D_0^*$, $D_1'$), ``higher $D^{**}$'' $D(2S)$, $D^*(2S)$, $D(2750)$, $D(3000)\to D^*\pi\pi$ ($0.45/0.05/0.45/0.05$)
+in place of NR $D^{(*)}\pi\pi$ (same share), no $D_sK$; $D(2750)$ and $D(3000)$ are not in the basf2 particle table and are
+emulated as $D_2^*$ aliases with the PDG/LHCb mass and width. Each ingredient alone and all together keep C5, C6 and C13
+unchanged ($c_\text{true}=5.97$ without $D_sK$). Absolute LHCb normalisations are not in the DecFiles (I6); HFLAV values used.
+C5/C6 are also unchanged for supports $E_\ell\le2.26$ or $2.4\GeV$, $M_X^2\le12$ or $20\GeV^2$, $q^2\le12.5\GeV^2$; a
+deliberately wrong support ($q^2\le6\GeV^2$) is rejected ($d^2=30$).
 
 \paragraph{Still open}
-C9 coverage and power study (inject $\Lambda_c\bar p$); bootstrap-based component scan (C7); LHCb cocktail (needs I6);
-partial-BF cross-check (needs I5); $\beta=2$ vs $7/2$ (affects only the illustrative MaxEnt densities); step 5 (memory).
+C9 coverage and power study, including the reverse test (reject ``light states only'' for an injected heavy gap);
+bootstrap-based component and pair scans (C7); MC calibration of the measured $M_X$ moments (C5); partial-BF cross-check
+(needs I5); LHCb absolute normalisation (I6); $\beta=2$ vs $7/2$ (MaxEnt densities only); step 5 (memory).
 
 \section{Pipeline fixes of 14 October}\label{sec:fixes}
 \begin{itemize}
