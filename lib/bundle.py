@@ -1,11 +1,9 @@
-"""The step-6 bundle: one file holding everything steps 7 and 8 need, so they run without the
+"""The step-4 bundle: one file holding everything steps 5-8 need, so they run without the
 MC samples or any other input (e.g. on a collaborator's machine).
 
 Contents (numpy .npz, compressed):
   pseudo-experiments  the arrays of toys.npz (moments per toy, SEM variants, z draws, nominal
                       values, supports, stack binning)
-  residuals           per observable (Mx, El, Q2) and source: thresholds, nominal residual
-                      moments, covariance, per-toy residuals
   HQE                 zero-threshold raw moments of the HQE fit, central and likelihood toys
   truth histograms    per Asimov scenario and variable: component densities on the display
                       binning, component weight/mean/width in M_X, a 200-bin density for the
@@ -15,15 +13,12 @@ Contents (numpy .npz, compressed):
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
 import yaml
 
 NAME = "gap_toys_bundle.npz"
-RES_OBS = ["Mx", "El", "Q2"]
-RES_SOURCES = ["stat_ff", "stat_bfmode", "stat_ff_bfmode", "all"]
 VARS = ["mx2", "el", "q2"]
 DISPLAY_BINS = {"mx2": 1200, "el": 500, "q2": 500}
 L1_BINS = 200
@@ -36,8 +31,8 @@ def output_root(cfg: dict, here: Path) -> Path:
 
 
 def default_path(here: Path) -> Path:
-    """This machine's step-6 output if built here, else the copy shipped in data/."""
-    p = output_root(yaml.safe_load(open(here / "config.yaml")), here) / "6" / NAME
+    """This machine's step-4 output if built here, else the copy shipped in data/."""
+    p = output_root(yaml.safe_load(open(here / "config.yaml")), here) / "4" / NAME
     return p if p.exists() else here / "data" / NAME
 
 
@@ -52,7 +47,7 @@ def display_range(groups, q=(0.001, 0.995), pad=0.1):
 
 
 def truth_arrays(cfg, scen, groups, support):
-    """Histograms of one scenario's gap truth, as step 7 draws them."""
+    """Histograms of one scenario's gap truth, as step 5 draws them."""
     sc = cfg["asimov"]["scenarios"][scen]
     ncomp = len(sc["components"])
     comp = np.concatenate([np.full(len(g["w"]), g["comp"]) for g in groups])
@@ -78,22 +73,14 @@ def truth_arrays(cfg, scen, groups, support):
 
 
 def build(cfg: dict, config_text: str, here: Path) -> Path:
-    """Write <output>/6/NAME from the merged step-6 outputs, the HQE toys and the MC samples."""
+    """Write <output>/4/NAME from the merged step-4 toys, the HQE toys and the MC samples."""
     from lib.asimov import truth_groups
     from lib.systematics import load_hqe_raw, read_parquet_downcast
-    out6 = output_root(cfg, here) / "6"
-    arrays = dict(np.load(out6 / "toys.npz"))
-    for o in RES_OBS:
-        for s in RES_SOURCES:
-            d = json.load(open(out6 / f"residual_covariance_{o}_{s}.json"))
-            e = np.load(out6 / f"toy_ensemble_{o}_{s}.npz")
-            arrays[f"res_{o}_{s}_nominal"] = np.array(d["nominal"])
-            arrays[f"res_{o}_{s}_cov"] = np.array(d["cov"])
-            arrays[f"res_{o}_{s}_toys"] = e["raw_gap"]
-        arrays[f"res_{o}_thr"] = np.array(sorted({p["thr"] for p in d["points"]}))
+    out4 = output_root(cfg, here) / "4"
+    arrays = dict(np.load(out4 / "toys.npz"))
     arrays["hqe_central"], arrays["hqe_toys"] = load_hqe_raw(here / "inputs" / "hqe_likelihood_toys" / "likelihood_toys.h5")
 
-    df = read_parquet_downcast(Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet",
+    df = read_parquet_downcast(Path(cfg["paths"]["output"]) / "2" / "cocktail.parquet",
                                ["Mx", "El_B", "q2", "total_weight", "decay_name", "category"],
                                category_cols=("decay_name", "category"))
     df = df[np.isfinite(df[["Mx", "El_B", "q2", "total_weight"]].to_numpy(float)).all(axis=1) & (df["total_weight"] > 0)]
@@ -114,7 +101,7 @@ def build(cfg: dict, config_text: str, here: Path) -> Path:
         arrays[f"stack_nominal_{o}"] = np.stack([np.histogram(x[cat == c], e, weights=w[cat == c])[0] for c in names]) \
             / (w.sum() * np.diff(e))
     arrays["config_yaml"] = np.array(config_text)
-    path = out6 / NAME
+    path = out4 / NAME
     np.savez_compressed(path, **arrays)
     return path
 
@@ -131,10 +118,6 @@ class Bundle:
     @property
     def toys(self) -> dict:
         return self.a
-
-    def residual(self, obs: str, src: str) -> dict:
-        return dict(nominal=self.a[f"res_{obs}_{src}_nominal"], cov=self.a[f"res_{obs}_{src}_cov"],
-                    toys=self.a[f"res_{obs}_{src}_toys"], thr=list(self.a[f"res_{obs}_thr"]))
 
     @property
     def hqe(self):

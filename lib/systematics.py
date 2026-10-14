@@ -1,4 +1,4 @@
-"""Systematic-uncertainty ingredients for the step-6 toy loop.
+"""Systematic-uncertainty ingredients for the step-4 toy loop.
 
   ff:           Hammer FF eigenvariations, grouped D+D* (one BLPRXP fit) / D** (correlated within a group)
   bf_mode:      per-decay-mode BF Gaussian nuisance on the SEM template

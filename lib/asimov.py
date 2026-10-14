@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 COLS = ["Mx", "El_B", "q2", "total_weight", "decay_name"]
-MAX_ORDER = 6   # raw moment orders stored per observable (step 6) and available to steps 7-8
+MAX_ORDER = 6   # raw moment orders stored per observable (step 4) and available to steps 5-8
 
 
 def power_matrix(mx2, el, q2) -> np.ndarray:
@@ -35,11 +35,11 @@ def truth_groups(cfg: dict, name: str, cocktail: dict | None = None) -> list[dic
     for components given as `decays`."""
     sc = cfg["asimov"]["scenarios"][name]
     equal = sc.get("equal_species", False)
-    out3 = Path(cfg["paths"]["output"]) / "3"
+    out2 = Path(cfg["paths"]["output"]) / "2"
     groups = []
     for i, comp in enumerate(sc["components"]):
         if "gap_mode" in comp:
-            d = _clean(pd.read_parquet(out3 / f"{comp['gap_mode']}.parquet", columns=COLS))
+            d = _clean(pd.read_parquet(out2 / f"{comp['gap_mode']}.parquet", columns=COLS))
             x = dict(mx2=d["Mx"].to_numpy(float) ** 2, el=d["El_B"].to_numpy(float),
                      q2=d["q2"].to_numpy(float))
             names, w, src, base = d["decay_name"].to_numpy(str), d["total_weight"].to_numpy(float), "own", None

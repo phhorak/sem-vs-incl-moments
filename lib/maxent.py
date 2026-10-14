@@ -28,15 +28,6 @@ def raw_to_mu01(raw, lo: float, hi: float) -> np.ndarray:
                      for k in range(len(raw))])
 
 
-def raw_to_mu01_jacobian(lo: float, hi: float, nmax: int) -> np.ndarray:
-    span = hi - lo
-    J = np.zeros((nmax, nmax))
-    for k in range(nmax):
-        for j in range(k + 1):
-            J[k, j] = comb(k, j) * (-lo) ** (k - j) / span ** k
-    return J
-
-
 def hausdorff_check(mu01, tol: float = 1e-12) -> tuple[bool, float]:
     """Exact truncated Hausdorff test on [0,1]: m_0..m_N lie strictly inside the moment space
     (where a MaxEnt density exists) iff the Hankel and localizing matrices are positive definite:

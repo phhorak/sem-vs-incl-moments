@@ -6,13 +6,16 @@ paths:
   output: output
   figures: figures
 
+# LSF queue for every --submit (h: 4 GB/slot, max 12 slots; s: larger, often more pending jobs)
+batch:
+  queue: s
+
 generation:
   # Generate with full release release-09-00-11 (b2setup release-09-00-11): the cocktail was made with
   # it, D'_1 widths differ between releases (314 vs 384 MeV in 08-02-05; MCAmbulance assumes 314), and
-  # 08-02-05 segfaults in findMCDecay on B0 with VSS_BMIX. Steps 3+ run in light-2509-fornax.
+  # 08-02-05 segfaults in findMCDecay on B0 with VSS_BMIX. Steps 2+ run in light-2509-fornax.
   n_events_per_job: 200000
   n_jobs: 1
-  queue: s
   batch_output_dir: /ghi/fs01/belle2/bdata/users/phorak/sigmc/evtgen
   cocktail_modes:
     # B+, electron
@@ -159,43 +162,13 @@ reweight:
   # one job per cocktail ROOT file; more files per job exceed the 4 GB slot
   cocktail_n_jobs: 104
 
-average:
-  method: polynomial        # "gls": free value per (key, cut); "polynomial": smooth in the cut
-  poly_degree: {mx: 4, el: 4, q2: 5}  # per family (int = same for all). q2 is Belle II only: chi2 82/30 at deg 4, 21/27 at deg 5
-  corr_same_exp_same_var: 0.5
-  corr_same_exp_diff_var: 0.2
-  corr_diff_exp: 0.05
-  inflate_if_incompatible: true
-  exclude_sem: true        # if true, drop CDF and DELPHI (sum-of-exclusive measurements)
-  exclude_experiments:
-    #- delphi
-    #- cleo
-    #- cdf
-  # Belle q2 is offset from Belle II by ~1 sigma per point, beyond their measured correlation
-  # (chi2/dof 999/141 with both, 110/96 without).
-  exclude_family_experiments:
-    q2: [belle]
 
-plots:
-  exp_data_tar: inputs/sem.tar.gz
-  n_toys: 5
-  toy_seed: 42
-  el_cuts_min: 0.0
-  el_cuts_max: 1.7
-  el_cuts_n: 35
-  q2_cuts_min: 0.0
-  q2_cuts_max: 10.0
-  q2_cuts_n: 45
-  n_bootstrap: 3
-  weight_col: total_weight
-
-
-# ── Steps 6-8: residual moments, toys, MaxEnt ───────────────────────────────
+# ── Steps 5-11: toys, closure, MaxEnt, tests ───────────────────────────────
 maxent:
   grid_size: 2000
   mom_tol: 1.0e-6          # converged <=> max_k |m_k(f) - m_k| < mom_tol
   n_moments: [1, 2, 3, 4]  # N = highest moment order used, m_1..m_N (m_0 = 1 always)
-  n_moments_extended: [1, 2, 3, 4, 5, 6]   # extra step-7 figure set (total band only)
+  n_moments_extended: [1, 2, 3, 4, 5, 6]   # extra step-5 figure set (total band only)
   # Endpoint priors f(t) ~ t^alpha (1-t)^beta (draft, sec. idea+approach).
   # Mx2 lower edge: no statement possible; El: E_l^2 at 0, eps^(3+a) with a=1/2 at the top;
   # q2: finite at 0, eps^(3/2) at the top.
@@ -216,7 +189,7 @@ systematics:
   # lib/systematics.bf_gap_sigma.
   n_leptons: 2
   bf_gap_unc: {Bp: 0.0028, B0: 0.0026}
-  # B(B -> Xc l nu) uncertainty per species and lepton (draft Table 1); only for the sigma(B_incl) x 2 variants of step 10
+  # B(B -> Xc l nu) uncertainty per species and lepton (draft Table 1); only for the sigma(B_incl) x 2 variants of step 7
   bf_incl_unc: {Bp: 0.0016, B0: 0.0015}
 
 asimov:
@@ -235,11 +208,8 @@ asimov:
 data:
   # Mx2 upper edge from the support scan; q2 upper edge = (M_B - M_D)^2
   support: {mx2: [3.2, 16.0], el: [0.0, 2.3], q2: [0.0, 11.7]}
-  # Joint chi2 fit to the threshold moments (El, q2) and per-El-cut Mx fits, next to the HQE
-  # threshold-0 inversion (steps 7 --thresholds and 8). Off: the residual uses one c = B_incl/B_gap
-  # at every threshold, which leaves SEM in it wherever the gap fraction drops above threshold.
-  joint_fit: false
-  joint_fit_q2_lo: 1.5     # lowest measured q2 threshold; no data constrain the fit below it
-  # Gaussian kernel of the SEM stack in step 8 [GeV, GeV, GeV^2]; narrower than
+  # measured moments vs threshold (the HQE fit's input), drawn by step 8
+  exp_data_tar: inputs/sem.tar.gz
+  # Gaussian kernel of the SEM stack in step 6 [GeV, GeV, GeV^2]; narrower than
   # asimov.truth_smoothing, which is sized for the small gap-mode samples
   stack_smoothing: {mx: 0.03, el: 0.03, q2: 0.15}

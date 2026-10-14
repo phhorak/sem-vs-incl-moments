@@ -66,7 +66,7 @@ if not args.submit:
     sys.exit(0)
 
 # Batch submission
-queue   = g["queue"]
+queue   = cfg["batch"]["queue"]
 n_jobs  = g["n_jobs"]
 log_dir = os.path.join(here, "logs", "1")
 

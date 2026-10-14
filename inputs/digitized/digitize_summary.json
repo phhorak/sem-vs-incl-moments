@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "key": "dsk",
+      "n_points": 34,
+      "csv": "output/2/dsk_digitized.csv",
+      "json": "output/2/dsk_digitized.json"
+    },
+    {
+      "key": "lambdac_p",
+      "n_points": 40,
+      "csv": "output/2/lambdac_p_digitized.csv",
+      "json": "output/2/lambdac_p_digitized.json"
+    }
+  ]
+}

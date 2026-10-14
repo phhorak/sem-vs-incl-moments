@@ -3,7 +3,7 @@
 \usepackage{amsmath,amssymb,booktabs,graphicx,xcolor,array,enumitem}
 \usepackage[hidelinks]{hyperref}
 \usepackage[section]{placeins}
-\graphicspath{{../figures/11/}{../figures/}}
+\graphicspath{{../figures/8/}{../figures/}}
 \input{numbers.tex}
 \newcommand{\GeV}{\,\mathrm{GeV}}
 \newcommand{\Mx}{M_X^2}
@@ -86,7 +86,7 @@ mode), the gap normalisation $\BR_\text{gap}$ (fully correlated across $B^+$, $B
 HQE likelihood toy. Table~\ref{tab:budget} gives the resulting relative uncertainties of the gap moments. The form
 factors dominate $\Mx$; the branching fractions per mode dominate $q^2$.
 \begin{table}[htbp]\centering\small
-\input{../output/8/moment_budget_data_thr0.tex}
+\input{../output/6/moment_budget_data_thr0.tex}
 \caption{Relative uncertainty of the gap moments $m_{1..3}$ by source, in percent.}\label{tab:budget}
 \end{table}
 
@@ -134,7 +134,7 @@ SEM: it lies above the SEM below about $1.4\GeV$. In $q^2$ the two agree to with
 cannot resolve the $D$ and $D^*$ lines, so the inversion is only a smooth curve; there the comparison is made on the
 moments. The differences are small by eye; the factor $c\approx6$ turns them into the gap.
 \begin{figure}[htbp]\centering
-\includegraphics[width=\linewidth]{8/hqe_vs_sem_stack.pdf}
+\includegraphics[width=\linewidth]{6/hqe_vs_sem_stack.pdf}
 \caption{MaxEnt inversion of the inclusive HQE moments without SEM subtraction (black, hatched: $68\%$ of the HQE
 toys), against the SEM stacked by mode (grey band: $68\%$ of the SEM toys). Both are normalised to unit area. Vertical
 lines in $M_X$: the $D$ and $D^*$ masses.}\label{fig:incl}
@@ -147,7 +147,7 @@ bump at $M_X\approx2.4\GeV$, above the $D$ and $D^*$ masses and around the $D^{*
 $1.45\GeV$ and extends down to about $0.3\GeV$. In $q^2$ it falls slowly over the full range. The gap moments are
 allowed for all three observables: in $\nGapAllowedMx\%$ of the toys for $\Mx$ and in all toys for $\El$ and $q^2$.
 \begin{figure}[htbp]\centering
-\includegraphics[width=\linewidth]{8/gap_density.pdf}
+\includegraphics[width=\linewidth]{6/gap_density.pdf}
 \caption{MaxEnt reconstruction of the gap from three moments per observable, with endpoint behaviour for $\El$ and
 $q^2$; band: $68\%$ of the toys. Illustration only.}\label{fig:gap}
 \end{figure}
@@ -204,7 +204,7 @@ We compute the lowest and highest possible gap CDF over all positive spectra wit
 \item $q^2$: $P(\le 4\GeV^2)$ between $\nCdfQFourLo$ and $\nCdfQFourHi$; $P(\le 6\GeV^2) \ge \nCdfQSixLo\ (\nCdfQSixLoToys)$.
 \end{itemize}
 \begin{figure}[htbp]\centering
-\includegraphics[width=\linewidth]{9/cdf_bounds.pdf}
+\includegraphics[width=\linewidth]{7/cdf_bounds.pdf}
 \caption{Allowed range of the gap CDF (dark) and its $68\%$ toy range (light). Dashed: $\Lcp$ kinematic limit; dotted:
 $D_sK$ limit.}\label{fig:cdf}
 \end{figure}
@@ -225,7 +225,7 @@ $\nToyFracNominal\%$ at the nominal size, $50\%$ at $f = \nToyFracHalfAt$ and $\
 fraction is not a confidence level: it asks how often the fluctuated moments are allowed, while the limit asks whether
 the measured moments are compatible with allowed ones.
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.55\linewidth]{9/gap_fraction_scan.pdf}
+\includegraphics[width=0.55\linewidth]{7/gap_fraction_scan.pdf}
 \caption{Fraction of toys in which a positive gap spectrum exists vs the assumed gap size, per observable. Grey band:
 the nominal gap size $\pm1\sigma$.}\label{fig:size}
 \end{figure}
