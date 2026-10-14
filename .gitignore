@@ -3,7 +3,7 @@ output
 *.root
 *.parquet
 logs/
-# local work area; the few tracked files in it stay tracked
+# local work area, not tracked
 scratch/
 __pycache__/
 *.pyc
