@@ -143,7 +143,16 @@ def _weighted_moment(x, w, n, mu=0.0):
 # ── A. Load cocktail + gap mode parquets ──────────────────────────────────────
 
 print("[1/10] Loading parquets …")
-cocktail = pd.read_parquet(Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet")
+# only the columns used here, float32, streamed: the full cocktail (~40M rows x 113 columns) exceeds a batch slot
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pyarrow.parquet as _pq
+from lib.systematics import read_parquet_downcast
+_path = Path(cfg["paths"]["output"]) / "3" / "cocktail.parquet"
+_cols = [c for c in _pq.ParquetFile(_path).schema.names
+         if c in ("bf", "bf_unc", "category", "decay_name", "El_B", "ff_weight", "mc_weight", "Mx", "q2", "total_weight", "weight")
+         or c.startswith(("ff_weight_up", "ff_weight_down"))]
+cocktail = read_parquet_downcast(_path, _cols, float32_cols=[c for c in _cols if c not in ("category", "decay_name")],
+                                 category_cols=("category", "decay_name"))
 if "total_weight" not in cocktail.columns:
     cocktail["total_weight"] = cocktail["weight"] * cocktail["mc_weight"] * cocktail["ff_weight"]
 

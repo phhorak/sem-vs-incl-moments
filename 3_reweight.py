@@ -540,10 +540,28 @@ if args.merge_cocktail:
         print(f"error: no chunk files found in {chunk_dir}")
         sys.exit(1)
     print(f"  merging {len(chunks)} cocktail chunk(s)")
-    merged = pd.concat([pd.read_parquet(p) for p in chunks], ignore_index=True)
-    merged = _apply_dsk_spectrum_weight(merged)
-    merged = _apply_isospin_weight(merged)
-    merged.to_parquet(cocktail_path, index=False)
+    # Streamed chunk by chunk (the full cocktail does not fit a 4 GB slot); the DsK spectrum
+    # weight needs all DsK rows at once, so it is computed first on just those rows.
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    dsk_cols = ["decay_name", "weight", "mc_weight", "ff_weight"] + [f"d{i}_mc{v}" for i in (0, 1) for v in ("E", "PX", "PY", "PZ")]
+    dsk = []
+    for k, p in enumerate(chunks):
+        if pq.ParquetFile(p).metadata.num_rows:
+            d = pd.read_parquet(p, columns=dsk_cols)
+            dsk.append(d[d["decay_name"].isin(_DSK_DECAY_NAMES)].assign(_chunk=k))
+    dsk = _apply_dsk_spectrum_weight(pd.concat(dsk))
+    writer = None
+    for k, p in enumerate(chunks):
+        if not pq.ParquetFile(p).metadata.num_rows:
+            continue
+        df = pd.read_parquet(p)
+        sub = dsk[dsk["_chunk"] == k]
+        df.loc[sub.index, ["spectrum_weight", "total_weight"]] = sub[["spectrum_weight", "total_weight"]].to_numpy()
+        tbl = pa.Table.from_pandas(_apply_isospin_weight(df), preserve_index=False)
+        writer = writer or pq.ParquetWriter(cocktail_path, tbl.schema)
+        writer.write_table(tbl.select(writer.schema.names).cast(writer.schema))
+    writer.close()
     print(f"  merged cocktail saved → {cocktail_path}")
     args.skip_cocktail = True
 
