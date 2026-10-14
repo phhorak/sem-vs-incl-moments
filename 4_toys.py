@@ -2,7 +2,8 @@
 """Step 4: threshold-0 toy ensembles shared by step 5 (closure) and steps 6-8.
 
 Every toy draws, independently:
-  SEM template      cocktail bootstrap A, weights x {1, FF, BF-mode, FF*BF-mode} -> raw moments orders 1-MAX_ORDER
+  SEM template      cocktail bootstrap A, weights x {1, FF, BF-mode, FF*BF-mode} -> raw moments orders 1-MAX_ORDER;
+                    FF changes each mode's shape at fixed rate (the rate is the BF's)
   pseudo-inclusive  cocktail bootstrap B and a bootstrap of each Asimov gap truth
   bf_gap            z for the gap budget: B_gap' = B_gap + z*sigma, c_true = B_incl / B_gap'
   SEM stack         binned SEM densities (FF*BF-mode variant) for the step-6 stack band
@@ -96,6 +97,7 @@ def run_toy_job(cfg, chunk):
     w_all = df["total_weight"].to_numpy(float)
     codes = df["decay_name"].cat.codes.to_numpy()
     cats = np.asarray(df["decay_name"].cat.categories, dtype=str)
+    w_mode = np.bincount(codes, w_all, len(cats))
     ff_slopes, _ = build_ff_slope_matrix(df)
     bf_rel, bf_fam = bf_mode_setup(codes, cats, df["bf"].to_numpy(), df["bf_unc"].to_numpy())
     del df
@@ -124,6 +126,7 @@ def run_toy_job(cfg, chunk):
     for i in range(n):
         base = w_all * np.bincount(rng.integers(0, N, N), minlength=N)
         ff = sample_ff_multiplier(ff_slopes, rng)
+        ff /= np.divide(np.bincount(codes, w_all * ff, len(cats)), w_mode, out=np.ones(len(cats)), where=w_mode > 0)[codes]
         bfm = sample_bf_multiplier(codes, bf_rel, bf_fam, rng)
         for v, (use_ff, use_bf) in VARIANTS.items():
             w = base * (ff if use_ff else 1.0) * (bfm if use_bf else 1.0)

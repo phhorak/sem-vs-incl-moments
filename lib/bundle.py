@@ -78,7 +78,7 @@ def build(cfg: dict, config_text: str, here: Path) -> Path:
     from lib.systematics import load_hqe_raw, read_parquet_downcast
     out4 = output_root(cfg, here) / "4"
     arrays = dict(np.load(out4 / "toys.npz"))
-    arrays["hqe_central"], arrays["hqe_toys"] = load_hqe_raw(here / "inputs" / "hqe_likelihood_toys" / "likelihood_toys.h5")
+    arrays["hqe_central"], arrays["hqe_toys"] = load_hqe_raw(here / cfg["data"]["hqe_toys"])
 
     df = read_parquet_downcast(Path(cfg["paths"]["output"]) / "2" / "cocktail.parquet",
                                ["Mx", "El_B", "q2", "total_weight", "decay_name", "category"],

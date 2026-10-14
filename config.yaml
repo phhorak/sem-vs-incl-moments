@@ -208,6 +208,8 @@ asimov:
 data:
   # Mx2 upper edge from the support scan; q2 upper edge = (M_B - M_D)^2
   support: {mx2: [3.2, 16.0], el: [0.0, 2.3], q2: [0.0, 11.7]}
+  # HQE-fit likelihood toys (Markus), zero-threshold inclusive moments; read by the step-4 bundle
+  hqe_toys: inputs/hqe_likelihood_toys/likelihood_toys.h5
   # measured moments vs threshold (the HQE fit's input), drawn by step 8
   exp_data_tar: inputs/sem.tar.gz
   # Gaussian kernel of the SEM stack in step 6 [GeV, GeV, GeV^2]; narrower than
