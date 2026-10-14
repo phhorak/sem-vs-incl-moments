@@ -7,3 +7,6 @@ logs/
 scratch/
 __pycache__/
 *.pyc
+
+# compiled claims summary (built from paper/claims_summary.tex)
+paper/*.pdf
