@@ -1,0 +1,21 @@
+noPhotos
+
+# anti-D'_10 l nu (ISGW2), as the LHCb D** cocktail
+# LHCb-style cocktail component (DecFiles Sim10 11874430/12873450, 11676012/12675402), e/mu 50/50
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+0.5  anti-D'_10  e+  nu_e   ISGW2;
+0.5  anti-D'_10  mu+  nu_mu  ISGW2;
+Enddecay
+CDecay B-sig
+
+Decay anti-D'_10
+1.0  D*-  pi+   VVS_PWAVE  1.0 0.0 0.0 0.0 0.0 0.0;
+Enddecay
+CDecay D'_10
+
+End

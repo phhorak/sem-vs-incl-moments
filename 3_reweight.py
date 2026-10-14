@@ -460,35 +460,7 @@ def _apply_dsk_spectrum_weight(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Physics computation ───────────────────────────────────────────────────────
 
-def _cms_to_xyz(p, theta, phi):
-    return (p * np.sin(theta) * np.cos(phi),
-            p * np.sin(theta) * np.sin(phi),
-            p * np.cos(theta))
-
-
-def _compute_vars(df):
-    l_E = l_px = l_py = l_pz = pd.Series(np.nan, index=df.index)
-    nu_E = nu_px = nu_py = nu_pz = pd.Series(np.nan, index=df.index)
-    for i in range(5):
-        pdg   = df[f"d{i}_mcPDG"].abs()
-        is_l  = ((pdg == 11) | (pdg == 13)) & l_E.isna()
-        is_nu = ((pdg == 12) | (pdg == 14)) & nu_E.isna()
-        l_E   = l_E.where(~is_l,   df[f"d{i}_E"]);   l_px = l_px.where(~is_l,  df[f"d{i}_px"])
-        l_py  = l_py.where(~is_l,  df[f"d{i}_py"]);  l_pz = l_pz.where(~is_l,  df[f"d{i}_pz"])
-        nu_E  = nu_E.where(~is_nu, df[f"d{i}_E"]);   nu_px = nu_px.where(~is_nu, df[f"d{i}_px"])
-        nu_py = nu_py.where(~is_nu, df[f"d{i}_py"]); nu_pz = nu_pz.where(~is_nu, df[f"d{i}_pz"])
-    B_px, B_py, B_pz = _cms_to_xyz(df["B_pCM"], df["B_thetaCM"], df["B_phiCM"])
-    B_E = df["B_ECM"]
-    X_E  = B_E - l_E - nu_E
-    X_px = B_px - l_px - nu_px; X_py = B_py - l_py - nu_py; X_pz = B_pz - l_pz - nu_pz
-    df["Mx"] = np.sqrt(np.clip(X_E**2 - (X_px**2 + X_py**2 + X_pz**2), 0, None))
-    q_E  = l_E + nu_E; q_px = l_px + nu_px; q_py = l_py + nu_py; q_pz = l_pz + nu_pz
-    df["q2"] = np.clip(q_E**2 - (q_px**2 + q_py**2 + q_pz**2), 0, None)
-    B_p2       = B_px**2 + B_py**2 + B_pz**2
-    B_gamma    = B_E / np.sqrt(np.clip(B_E**2 - B_p2, 1e-12, None))
-    beta_dot_p = (B_px * l_px + B_py * l_py + B_pz * l_pz) / B_E
-    df["El_B"] = B_gamma * (l_E - beta_dot_p)
-    return df
+from lib.moments import compute_kinematics as _compute_vars
 
 
 def _pdg_sig(row):

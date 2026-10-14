@@ -51,6 +51,9 @@ MODES = {
     'Bplus/DsKenu':       'B+ -> e+ D_s- K+ nu_e ?gamma ?addbrems ...',
     'Bplus/D0etaenu':     'B+ -> e+ anti-D0 eta nu_e ?gamma ?addbrems ...',
     'Bplus/Dst0etaenu':   'B+ -> e+ anti-D*0 eta nu_e ?gamma ?addbrems ...',
+    # LHCb-style cocktail components (decfiles/lhcb): only the lepton pair is matched
+    'lhcb/Bplus': 'B+ -> e+ nu_e ... ?gamma ?addbrems',
+    'lhcb/B0':    'anti-B0 -> e- anti-nu_e ... ?gamma ?addbrems',
     # gap modes (both prefixed and bare keys for flexible submission)
     'gap_modes/Bplus/D2stDeta':  'B+ -> e+ anti-D_2*0 nu_e ?gamma ?addbrems ...',
     'gap_modes/Bplus/DummyDeta': 'B+ -> e+ anti-D_0*0 nu_e ?gamma ?addbrems ...',
@@ -126,6 +129,8 @@ def _family_key(mode):
     lepton suffix and pass through unchanged (both flavors already have their own MODES entry
     where needed, or share one bare key for gap modes with an inline 50/50 e/mu decfile).
     Non-resonant D(*)pipi modes ('Bplus/D0pipipenu/Dp1') use the string of their D** parent."""
+    if mode.startswith('lhcb/'):
+        return '/'.join(mode.split('/')[:2])
     parent = mode.rsplit('/', 1)[-1]
     if parent in ('Dp1', 'D0st'):
         return f"{mode.split('/')[0]}/{parent}enu"

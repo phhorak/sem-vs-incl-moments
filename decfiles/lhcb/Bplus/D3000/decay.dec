@@ -1,0 +1,28 @@
+noPhotos
+
+# higher D** D3000 -> D* pi pi (ISGW2, PHSP), as the LHCb CocktailHigher
+# LHCb-style cocktail component (DecFiles Sim10 11874430/12873450, 11676012/12675402), e/mu 50/50
+
+Alias MyD3000 anti-D_2*0
+Alias MyantiD3000 D_2*0
+ChargeConj MyD3000 MyantiD3000
+Particle MyD3000 2.972 0.188
+Particle MyantiD3000 2.972 0.188
+# D(3000) is not in the basf2 particle table: emulated by a D_2* alias with m, Gamma from the PDG/LHCb
+
+Decay Upsilon(4S)
+1.0  B+sig  B-sig  VSS;
+Enddecay
+
+Decay B+sig
+0.5  MyD3000  e+  nu_e   ISGW2;
+0.5  MyD3000  mu+  nu_mu  ISGW2;
+Enddecay
+CDecay B-sig
+
+Decay MyD3000
+1.0  D*-  pi+  pi0   PHSP;
+Enddecay
+CDecay MyantiD3000
+
+End
