@@ -28,14 +28,14 @@ numbers exist, not in the pipeline) · **todo** · **input** (blocked on input, 
 | C2 | Inclusive full-phase-space moments with full theory covariance | Fig. measurements + HQE | `scratch/interpretation/measurements_hqe.py` | proto |
 | C3 | Inclusive spectrum inverted without SEM subtraction agrees with the SEM shape in E_ℓ; no c_true needed | `figures/8/hqe_vs_sem_stack.pdf` | step 8 | done |
 | C4 | Closure: the zero-threshold procedure recovers known gap truths (D1'→D*η, 50 % Dℓν + 50 % Λc p̄ℓν); M_X² cannot represent lines with 3 moments | `figures/7/*/convergence_all3_band.pdf`, `output/7/summary.json` | step 7 | done (zero threshold only) |
-| C5 | M_X²: with the PHSP NR D(*)ππ the residual was inadmissible (Var < 0, 0.4 % of toys). With the Belle II cocktail (D6) and the Hammer fixes it is admissible: SEM Var(M_X²) 4.06 → 1.22 GeV⁴ (inclusive 1.62 ± 0.08), gap ⟨M_X²⟩ ≈ 5.8 GeV², Var ≈ 1.7 GeV⁴, 75 % of toys admissible (2026-10-14). New claim: the M_X² moments exclude the PHSP D(*)ππ lineshape | moment plane, `output/8/summary.json` | step 8, `moment_plane_clean.py` | done for nominal; PHSP-vs-resonant comparison todo |
-| C6 | Admissibility as a test: cone-distance statistic and p-value per observable (replaces "fraction admissible": E_ℓ 98.2 %, q² 99.7 %, M_X² 0.4 %) | table | — | todo (M1) |
-| C7 | Minimal SEM shift that restores admissibility: convex fit of BF / B_incl / FF / lineshape pulls under Hankel positivity of the unnormalised gap moments; pulls and binding modes | table | — | todo (M2), plan in `scratch/interpretation/NOTES.md` |
-| C8 | Model-independent bounds on gap fractions per region (LP, 3 moments): P(E_ℓ ≤ 0.5) ≤ 0.10 (0.14 with unc.), P(E_ℓ ≤ 1.0) ≤ 0.51, P(q² ≤ 6) ≥ 0.55 (0.49) | `cdf_bounds.pdf` | `interp.py` (reads stale `output/5/toys.npz`) | proto → M3 |
-| C9 | Support tests for kinematic classes: Λc p̄ requires q² ≤ 4.22 GeV², E_ℓ ≤ 1.66 GeV; D_sK q² ≤ 7.94, E_ℓ ≤ 2.07. Bound on the gap mass beyond these → "light states only" / "no-D" tests, with power study (inject Λc p̄) and coverage | table + fig | — | todo (M3) |
-| C10 | Positivity lower-bounds the gap: E_ℓ, q² admissible only for B_gap / B_incl ≳ 0.10–0.11 | `admissibility_vs_gap.pdf` | `interp.py` | proto |
+| C5 | M_X²: residual admissible with the Belle II cocktail (SEM Var(M_X²) 4.06 → 1.22 GeV⁴, inclusive 1.62 ± 0.08; gap ⟨M_X²⟩ ≈ 5.8 GeV², Var ≈ 1.7 GeV⁴). The PHSP NR D(*)ππ lineshape makes it inadmissible: cone distance d² = 20.9, bootstrap p = 0.002 (2.9σ); E_ℓ, q² admissible either way. Independent of the D1':D0* split and of the support | `output/10/summary.json` | step 10 | done |
+| C6 | Admissibility as a test: Mahalanobis distance to the moment space (exact two-atom boundary), bootstrap p. Nominal: d² = 0 for M_X², E_ℓ, q² and jointly (p = 1). χ² approximation not conservative (non-Gaussian toys) | `output/10/summary.json` | step 10 | done |
+| C7 | (reframed: nominal is admissible, so the minimal shift is 0) Positivity-allowed scale of each SEM component, one at a time, incl. the B_SEM/c_true change: D* ≤ 1.30, D ≤ 1.65, D** ≤ 2.25; D(*)ππ, D_sK unconstrained up to 3. Scale that would close the gap alone: 1.35, 1.8, 2.3 → no single component can fill the gap | `figures/10/component_scan.pdf` | step 10 | done (joint χ²₉ approximation; bootstrap scan todo) |
+| C8 | Model-independent CDF bounds (LP, 3 moments, nominal / 68 % toys): P(E_ℓ ≤ 0.5) ≤ 0.16 (0.17); P(E_ℓ ≤ 1.0) ∈ [0.02, 0.56]; P(q² ≤ 4) ∈ [0.19, 0.79]; P(q² ≤ 6) ≥ 0.40 (0.36); P(M_X² ≤ 10) ≥ 0.93 (0.88) | `figures/9/cdf_bounds.pdf` | step 9 | done |
+| C9 | Support tests: Λc p̄ alone excluded — ≥ 94 % of the gap below its M_X² threshold (10.4 GeV²) and ≥ 17 % above its q² endpoint (4.22 GeV²), allowed in 0 % of toys. D_sK alone disfavoured only by M_X² (≥ 12 % below 6.06 GeV², allowed in 6 % of toys); E_ℓ, q² allow it | `output/9/summary.json` | step 9 | done (coverage, power study todo) |
+| C10 | Positivity lower-bounds the gap size: M_X² admissible in ≥ 50 % of toys only for B_gap/B_incl ≥ 0.13 (nominal 0.165: 78 %); E_ℓ ≥ 0.055, q² ≥ 0.04 | `figures/9/gap_fraction_scan.pdf` | step 9 | done |
 | C11 | Gap location vs SEM and candidates (mean–variance plane), new cocktail: E_ℓ gap ⟨E_ℓ⟩ ≈ 1.30 GeV, Dπππ inside 68 %; q² gap on top of SEM/inclusive (⟨q²⟩ ≈ 4.3, Var ≈ 8), all candidates ≤ 3.2 → no single candidate, driven by q². Seminar statements "no low-E_ℓ gap" and "gap hard in E_ℓ" no longer hold | `moment_plane_clean.pdf`, `gap_density_hqe.pdf` | `moment_plane_clean.py`, `gap_density_hqe.py` | proto, rerun 2026-10-14 |
-| C12 | Robustness: Belle II vs LHCb cocktail, β = 2 vs 7/2 for E_ℓ, support choices, partial-BF-per-threshold cross-check | table | — | todo (M4), **input** |
+| C12 | Robustness: D1':D0* split 0–1 and supports (E_ℓ ≤ 2.26 / 2.4, M_X² ≤ 12 / 20, q² ≤ 12.5) leave C5, C6 unchanged (step 10 `--support`). Open: LHCb cocktail (I6), β = 2 vs 7/2 (MaxEnt only), partial-BF cross-check (I5) | — | step 10 | partly done, **input** |
 
 ## Pipeline fixes (2026-10-14)
 
@@ -56,9 +56,9 @@ Review rounds 1–2 (claude.ai artifacts) refer to the old outline and are not c
 
 ## Milestones
 
-- **M1** C2 → pipeline; C6 test statistic and p-values on the HQE toys.
-- **M2** ~~D6 settled~~ (done); C5 PHSP-vs-resonant comparison; C7 minimal-shift fit (B_gap included).
-- **M3** C8, C9 bounds with toys, coverage and power from the step-3 gap-mode samples; C10.
+- **M1** ~~C6~~ (done, step 10); C2 → pipeline.
+- **M2** ~~D6, C5 comparison, C7~~ (done, step 10); bootstrap-based component scan.
+- **M3** ~~C8, C10, C9 nominal~~ (done, step 9); C9 coverage and power study from the gap-mode samples.
 - **M4** C12; then new draft skeleton, reusing SEM construction, endpoint asymptotics,
   THMP appendix and introduction from `references/draft.tex`.
 
@@ -77,7 +77,7 @@ LHCb (DecFiles Sim10, public): D*μν, Dμν CLN; D** cocktail ISGW2 with D1', D
 | # | Needed | From | Unblocks |
 |---|--------|------|----------|
 | I1 | Sign-off on this ledger, D3, D8 | Markus, Danny | everything |
-| I2 | D6: BF split of each NR D(*)ππ final state over D1' and D0* (50:50 assumed) | Markus / you | C1, C5, C7 |
+| I2 | D6: BF split of each NR D(*)ππ final state over D1' and D0* (50:50 assumed; C5/C6 shown insensitive) | Markus / you | systematic only |
 | I3 | ~~D7~~ settled (BLPRXP) | — | — |
 | I4 | Confirm `inputs/hqe_likelihood_toys/likelihood_toys.h5` is the 2609.28752 release; is m4 (q²) available at zero threshold? | Markus | C2, C6, C8 |
 | I5 | Partial BFs ΔB(E_ℓ > cut), ΔB(q² > cut) with correlations to the moments, from the HQE fit | Markus | C12 cross-check |

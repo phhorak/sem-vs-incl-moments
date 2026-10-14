@@ -11,7 +11,7 @@
 \newcommand{\GeV}{\,\mathrm{GeV}}
 \setlist{itemsep=1pt,topsep=3pt}
 \title{Paper 1: claims ledger with current numbers}
-\author{Status 14 October 2026 \quad (\texttt{clean} @ \texttt{5e6a42a}, source \texttt{paper/CLAIMS.md})}
+\author{Status 14 October 2026, afternoon \quad (\texttt{clean} @ \texttt{7b6c27f}, source \texttt{paper/CLAIMS.md})}
 \date{}
 \begin{document}
 \maketitle
@@ -126,10 +126,30 @@ residual $E_\ell$ / $q^2$ admissible & $98\%$ / $99.7\%$ & $100\%$ / $100\%$ & \
 \bottomrule
 \end{tabular}
 \end{center}
-Open: the formal PHSP-vs-resonant comparison (significance with which the moments reject PHSP), part of M2.
+\textbf{Significance (step 10):} replacing the $D^{(*)}\pi\pi$ component moments of the nominal SEM by those of the 5-body
+PHSP lineshape makes the $M_X^2$ residual inadmissible with cone distance $d^2 = 20.9$, bootstrap $p = 0.002$ ($2.9\sigma$);
+$E_\ell$ and $q^2$ stay admissible. The $M_X^2$ moments thus reject the PHSP lineshape. The nominal result does not depend
+on the $D_1'$:$D_0^*$ split (0 to 1) or on the support choice (C12).
 
-\paragraph{C6 \quad Admissibility as a test \hfill \todo{} (M1)}
-Current measure is the admissible fraction (above). Replace by a cone-distance statistic with a $p$-value.
+\paragraph{C6 \quad Admissibility as a test \hfill \done{} (step 10)}
+Statistic: Mahalanobis distance $d^2$ (toy covariance) from the residual moments $m_{1..3}$, scaled to the support, to the
+moment space of probability measures. For three moments on $[0,1]$ its boundary is the set of two-point measures
+$w\,\delta_e + (1-w)\,\delta_t$, $e\in\{0,1\}$, so the projection is exact. $p$ from a parametric bootstrap around the
+closest admissible point (2000 toys); jointly, block coordinate descent with the full $9\times9$ covariance.
+
+\begin{center}\small
+\begin{tabular}{lcccc}
+\toprule
+SEM variant & $M_X^2$ & $E_\ell$ & $q^2$ & joint \\
+\midrule
+nominal (resonant $D^{(*)}\pi\pi$) & $d^2=0$, $p=1$ & $0$, $1$ & $0$, $1$ & $0$, $1$ \\
+$D_1'$:$D_0^*$ split 0 or 1 & $0$, $1$ & $0$, $1$ & $0$, $1$ & $0$, $1$ \\
+PHSP $D^{(*)}\pi\pi$ & $\mathbf{20.9}$, $\mathbf{0.002}$ & $0$, $1$ & $0$, $1$ & $20.9$, $0.002$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The toys are not Gaussian ($c_\text{true} = \mathcal{B}_\text{incl}/\mathcal{B}_\text{gap}$ has a heavy tail): the
+$\chi^2_3$ approximation gives $p = 1.1\times10^{-4}$ for the PHSP case, smaller than the bootstrap, so it is not used.
 
 \paragraph{C11 \quad Where the gap sits \hfill \proto{} (\texttt{moment\_plane\_clean.py}, rerun 14 Oct)}
 Gap mean and variance at zero threshold, $68\%$ toy intervals (HQE $\times$ SEM stat+FF+BF toys), and candidate modes:
@@ -191,28 +211,84 @@ Total & 8.7 & 18 & 29 & 2.7 & 5.2 & 7.5 & 5.5 & 8.4 & 10 \\
 Compared with September, the per-mode BF term for $M_X^2$ dropped from $13/99/99\%$ to $4/8/12\%$; form factors
 now dominate $M_X^2$.
 
-\section{Claims not yet supported by current numbers}
+\section{Model-independent statements (steps 9 and 10)}
 
-\paragraph{C7 \quad Minimal SEM shift \hfill \todo{} (M2)}
-Convex fit of BF, $\mathcal{B}_\text{incl}$, FF and lineshape pulls under Hankel positivity of the unnormalised gap
-moments. With $M_X^2$ now admissible, the question becomes which pulls the remaining $25\%$ of inadmissible toys and the
-$q^2$ tension point to.
+\paragraph{C7 \quad How far can the SEM normalisations move? \hfill \done{} (step 10)}
+Reframed: the nominal residual is admissible, so the minimal shift that restores admissibility is zero. Instead, each SEM
+component normalisation is scaled by $s$ (one at a time), including the change of $\mathcal{B}_\text{SEM}$ and hence
+$c_\text{true}$, and the joint test is applied ($\chi^2_9$ approximation, larger than the bootstrap $p$ where compared).
 
-\paragraph{C8 \quad Bounds on gap fractions per region \hfill \stale{} (\texttt{interp.py}, old cocktail)}
-September prototype (LP, 3 moments): $P(E_\ell\le0.5)\le0.10$, $P(E_\ell\le1.0)\le0.51$, $P(q^2\le6)\ge0.55$.
-Must be rerun; the $E_\ell$ bounds in particular will loosen with the softer gap.
+\begin{center}\small
+\begin{tabular}{lccc}
+\toprule
+Component (share) & allowed by positivity ($p>0.05$) & $s$ at which it alone closes the gap \\
+\midrule
+$D^*$ ($57.2\%$) & $s \le 1.30$ & 1.35 \\
+$D$ ($24.6\%$) & $s \le 1.65$ & 1.80 \\
+$D^{**}$ ($14.8\%$) & $s \le 2.25$ & 2.33 \\
+$D^{(*)}\pi\pi$ ($3.1\%$), $D_s^{(*)}K$ ($0.3\%$) & unconstrained up to 3 & $\gg 3$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+No single SEM component scaled up can fill the gap: each becomes inconsistent with positivity before it closes it.
 
-\paragraph{C9 \quad Support tests for kinematic classes \hfill \todo{} (M3)}
-Endpoints: $\Lambda_c\bar p$ requires $q^2\le4.22\GeV^2$, $E_\ell\le1.66\GeV$; $D_sK$ requires $q^2\le7.94\GeV^2$,
-$E_\ell\le2.07\GeV$. Bound the gap mass beyond these, with coverage and a power study (inject $\Lambda_c\bar p$).
+\begin{figure}[h]\centering
+\includegraphics[width=0.6\linewidth]{10/component_scan.pdf}
+\caption{C7: joint $p$ of the admissibility test vs the scale of one SEM component. Curves end where that component alone
+would make $\mathcal{B}_\text{SEM}\ge\mathcal{B}_\text{incl}$.}
+\end{figure}
 
-\paragraph{C10 \quad Positivity lower-bounds the gap \hfill \stale{}}
-September: $E_\ell$, $q^2$ admissible only for $\mathcal{B}_\text{gap}/\mathcal{B}_\text{incl}\gtrsim0.10$--$0.11$. Rerun.
+\paragraph{C8 \quad Bounds on the gap distribution \hfill \done{} (step 9)}
+Minimum and maximum of $P(x\le X)$ over all positive densities on the support with the residual moments (linear
+programs, no MaxEnt, no endpoint priors); nominal, and in brackets the outer edges of the $68\%$ toy envelope:
+\begin{itemize}
+\item $E_\ell$: $P(E_\ell\le0.5\GeV)\le0.16\ (0.17)$; $P(E_\ell\le1.0\GeV)\in[0.02,0.56]$; $P(E_\ell\le1.5\GeV)\in[0.28,0.96]$.
+\item $q^2$: $P(q^2\le4\GeV^2)\in[0.19,0.79]$; $P(q^2\le6\GeV^2)\ge0.40\ (0.36)$; $P(q^2\le8\GeV^2)\ge0.66$.
+\item $M_X^2$: $P(M_X^2\le8\GeV^2)\ge0.75$; $P(M_X^2\le10\GeV^2)\ge0.93\ (0.88)$.
+\end{itemize}
 
-\paragraph{C12 \quad Robustness \hfill \todo{} (M4)}
-LHCb cocktail (D** ISGW2 with $D_1'$, $D_0^*$, $D_1$, $D_2^*$; higher $D^{**}$ via $D(2S)$, $D^*(2S)$, $D(2750)$, $D(3000)$;
-no NR $D^{(*)}\pi\pi$, no $D_sK$; absolute BFs not in the DecFiles), $\beta=2$ vs $7/2$ for $E_\ell$, support choices,
-partial-BF cross-check, PHSP $D^{(*)}\pi\pi$ alternative, $D_1'$:$D_0^*$ split.
+\begin{figure}[h]\centering
+\includegraphics[width=\linewidth]{9/cdf_bounds.pdf}
+\caption{C8: allowed range of the gap CDF from the measured moments (dark) and its $68\%$ toy envelope (light), with the
+kinematic endpoints of $\Lambda_c\bar p$ (dashed) and $D_sK$ (dotted).}
+\end{figure}
+
+\paragraph{C9 \quad Support tests for single-class hypotheses \hfill \done{} (step 9; coverage, power \todo{})}
+Minimal gap fraction outside the kinematic range of a class ($\Lambda_c\bar p$: $M_X^2\ge10.40\GeV^2$, $q^2\le4.22\GeV^2$,
+$E_\ell\le1.66\GeV$; $D_sK$: $M_X^2\ge6.06\GeV^2$, $q^2\le7.94\GeV^2$, $E_\ell\le2.07\GeV$):
+\begin{center}\small
+\begin{tabular}{lccc}
+\toprule
+ & $M_X^2$ & $E_\ell$ & $q^2$ \\
+\midrule
+$\Lambda_c\bar p$ alone: gap outside $\ge$ & $0.95$ (toys $0.91$--$0.98$) & 0 & $0.17$ ($0.14$--$0.21$) \\
+\quad allowed in toys & $0\%$ & $48\%$ & $0\%$ \\
+$D_sK$ alone: gap outside $\ge$ & $0.12$ ($0.04$--$0.24$) & 0 & 0 \\
+\quad allowed in toys & $6\%$ & $100\%$ & $99\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+$\Lambda_c\bar p$ alone is excluded by $M_X^2$ and independently by $q^2$. $D_sK$ alone is disfavoured only by $M_X^2$, the
+weakest observable; marginal tests per observable are conservative (no joint support).
+
+\paragraph{C10 \quad Positivity bounds the gap size from below \hfill \done{} (step 9)}
+Admissible fraction vs the assumed $\mathcal{B}_\text{gap}/\mathcal{B}_\text{incl}$: $M_X^2$ reaches $50\%$ only at $0.13$
+(nominal $0.165$: $78\%$; $0.10$: $13\%$); $E_\ell$ and $q^2$ at $0.055$ and $0.04$. Positivity alone thus requires
+$\mathcal{B}_\text{gap}/\mathcal{B}_\text{incl}\gtrsim0.13$, set by $M_X^2$ (the weakest observable in the closure test); there is no upper bound.
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.55\linewidth]{9/gap_fraction_scan.pdf}
+\caption{C10: admissible fraction of toys vs the assumed gap fraction; band: nominal $\pm1\sigma$.}
+\end{figure}
+
+\paragraph{C12 \quad Robustness \hfill partly \done{}}
+C5/C6 unchanged for $D_1'$:$D_0^*$ split 0--1 and for supports $E_\ell\le2.26$ or $2.4\GeV$, $M_X^2\le12$ or $20\GeV^2$,
+$q^2\le12.5\GeV^2$ (the PHSP violation is a negative variance, independent of the support). A deliberately wrong support
+($q^2\le6\GeV^2$) is rejected ($d^2=30$), as it should be.
+
+\paragraph{Still open}
+C9 coverage and power study (inject $\Lambda_c\bar p$); bootstrap-based component scan (C7); LHCb cocktail (needs I6);
+partial-BF cross-check (needs I5); $\beta=2$ vs $7/2$ (affects only the illustrative MaxEnt densities); step 5 (memory).
 
 \section{Pipeline fixes of 14 October}\label{sec:fixes}
 \begin{itemize}
@@ -224,6 +300,7 @@ partial-BF cross-check, PHSP $D^{(*)}\pi\pi$ alternative, $D_1'$:$D_0^*$ split.
 \item Generation with \texttt{release-09-00-11} (the cocktail's release): $\Gamma(D_1') = 314$ vs $384\,$MeV in 08-02-05,
   as assumed by MCAmbulance.
 \item FF slope matrix read only 8 eigenvariations (BLPRXP has 9); streamed step-3 merge; slim step-5 read.
+\item New steps: \texttt{9\_bounds.py} (C8--C10), \texttt{10\_cone\_test.py} (C5--C7, C12).
 \item KEKCC \texttt{/ghi} tape staging: 38 cocktail and 22 gap-mode samples regenerated instead of recalled.
 \end{itemize}
 
@@ -231,7 +308,7 @@ partial-BF cross-check, PHSP $D^{(*)}\pi\pi$ alternative, $D_1'$:$D_0^*$ split.
 \begin{tabular}{@{}p{0.6cm}p{11.5cm}>{\raggedright\arraybackslash}p{3.3cm}@{}}
 \toprule
 I1 & Sign-off on the ledger, D3, D8 & Markus, Danny \\
-I2 & BF split of each NR $D^{(*)}\pi\pi$ final state over $D_1'$ and $D_0^*$ (50:50 assumed) & Markus / Philipp \\
+I2 & BF split of NR $D^{(*)}\pi\pi$ over $D_1'$ and $D_0^*$ (50:50; C5/C6 shown insensitive) & Markus / Philipp \\
 I4 & Confirm the HQE toys are the 2609.28752 release; is $m_4$ ($q^2$) available at zero threshold? & Markus \\
 I5 & Partial BFs above each $E_\ell$, $q^2$ cut with correlations to the moments & Markus \\
 I6 & LHCb cocktail normalisation; higher $D^{**}$ as SEM or gap & note author / Markus \\
