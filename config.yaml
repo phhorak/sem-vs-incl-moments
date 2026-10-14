@@ -7,6 +7,9 @@ paths:
   figures: figures
 
 generation:
+  # Generate with full release release-09-00-11 (b2setup release-09-00-11): the cocktail was made with
+  # it, D'_1 widths differ between releases (314 vs 384 MeV in 08-02-05; MCAmbulance assumes 314), and
+  # 08-02-05 segfaults in findMCDecay on B0 with VSS_BMIX. Steps 3+ run in light-2509-fornax.
   n_events_per_job: 200000
   n_jobs: 1
   queue: s

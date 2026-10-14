@@ -2,10 +2,9 @@ noPhotos
 
 # anti-B0 -> D_0*+ e- anti-nu_e (LLSW), D_0*+ -> D+ pi0 pi0 (PHSP)
 # Non-resonant D(*)pipi l nu through a broad D** as in Belle II 119670000x.dec
-# No B0 mixing: with VSS_BMIX, findMCDecay segfaults on the 3-body D** decay (release-08-02-05)
 
 Decay Upsilon(4S)
-1.0  B0sig  anti-B0sig  VSS;
+1.0  B0sig  anti-B0sig  VSS_BMIX dm;
 Enddecay
 
 Decay anti-B0sig
