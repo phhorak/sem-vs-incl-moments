@@ -48,6 +48,8 @@ def run(B):
     matplotlib.use("Agg")
     import plothist  # noqa: F401
     import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+    from scipy.stats import gaussian_kde
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
@@ -151,12 +153,12 @@ def run(B):
             xg = np.linspace(x0, x1, 400)
             ax.fill_between(xg, y0, 0, color="0.88", lw=0, zorder=0)
             ax.fill_between(xg, np.maximum((xg - lo) * (hi - xg), y0), y1, color="0.88", lw=0, zorder=0)
-            mu, cov = P["gap_toys"].mean(0), np.cov(P["gap_toys"], rowvar=False)
-            w, v = np.linalg.eigh(cov)
-            ang = np.linspace(0, 2 * np.pi, 200)
-            for chi2, a in ((5.991, 0.2), (2.279, 0.45)):
-                xy = mu[:, None] + v @ (np.sqrt(np.clip(w, 0, None) * chi2)[:, None] * np.vstack([np.cos(ang), np.sin(ang)]))
-                ax.fill(*xy, color=GAP, alpha=a, lw=0, zorder=2)
+            # highest-density regions holding 68% and 95% of the toys (not truncated at the physical boundary)
+            kde = gaussian_kde(P["gap_toys"].T)
+            xx, yy = np.meshgrid(xg, np.linspace(y0, y1, 400))
+            z = kde(np.vstack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
+            lv = np.percentile(kde(P["gap_toys"].T), [5, 32])
+            ax.contourf(xx, yy, z, levels=[lv[0], lv[1], np.inf], colors=[(*to_rgb(GAP), 0.2), (*to_rgb(GAP), 0.45)], zorder=2)
             ax.plot(*P["gap"], "o", color=GAP, ms=13, mec="k", mew=1.4, zorder=6)
             ax.plot(*P["sem"], "s", color="k", ms=12, zorder=6)
             ax.plot(*P["hqe"], "D", color="0.45", ms=12, zorder=6)
