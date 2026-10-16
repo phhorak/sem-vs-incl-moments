@@ -13,7 +13,7 @@
 \setlist{itemsep=1pt,topsep=3pt}
 \title{Narrative}
 \author{}
-\date{15 October 2026}
+\date{17 October 2026}
 \begin{document}
 \maketitle
 \vspace{-1.5em}
@@ -43,7 +43,9 @@ All statements assume the HFLAV branching fractions of the SEM.
 The inclusive input is the HQE fit to the measured moments (arXiv:2609.28752). The fit describes the moments measured
 above a threshold on $\El$ or $q^2$ and extrapolates them to the full phase space (zero threshold, Fig.~\ref{fig:hqe}).
 This gives the first three moments of $\Mx$, of the lepton energy $\El$ in the $B$ rest frame, and of $q^2$, with
-$\nNHqeToys$ likelihood toys that carry all experimental and theory uncertainties and correlations. The means and
+$\nNHqeToys$ likelihood toys that carry all experimental and theory uncertainties and correlations. The fit uses the
+experimental input with the full Belle $\El$ and CLEO $\Mx$ covariances and the combined Belle and Belle~II $q^2$
+moments. The means and
 variances are $\langle\Mx\rangle = \nInclMeanMx\GeV^2$, $\mathrm{Var}(\Mx) = \nInclVarMx\pm\nInclVarMxUnc\GeV^4$;
 $\langle\El\rangle = \nInclMeanEl\GeV$, $\mathrm{Var}(\El) = \nInclVarEl\GeV^2$; $\langle q^2\rangle = \nInclMeanQ\GeV^2$,
 $\mathrm{Var}(q^2) = \nInclVarQ\GeV^4$.
@@ -83,8 +85,10 @@ sensitive to small details of the SEM.
 \subsection{Uncertainties}
 We use $\nNToys$ toys. Each toy varies the SEM (MC statistics, form-factor eigenvariations, branching fraction of each
 mode), the gap normalisation $\BR_\text{gap}$ (fully correlated across $B^+$, $B^0$ and lepton flavours), and draws one
-HQE likelihood toy. Table~\ref{tab:budget} gives the resulting relative uncertainties of the gap moments. The form
-factors dominate $\Mx$; the branching fractions per mode dominate $q^2$.
+HQE likelihood toy. The form-factor variations change the shape of each mode at fixed rate; its rate varies only with
+its branching fraction. Table~\ref{tab:budget} gives the resulting relative uncertainties of the gap moments. The
+branching fractions per mode and $\BR_\text{gap}$ dominate $\Mx$ and $\El$; in $q^2$ the branching fractions per mode
+and the form factors are comparable.
 \begin{table}[htbp]\centering\small
 \input{../output/6/moment_budget_data_thr0.tex}
 \caption{Relative uncertainty of the gap moments $m_{1..3}$ by source, in percent.}\label{tab:budget}
@@ -143,7 +147,7 @@ lines in $M_X$: the $D$ and $D^*$ masses.}\label{fig:incl}
 \FloatBarrier
 \subsection{The gap spectrum}
 Figure~\ref{fig:gap} shows the MaxEnt reconstruction of the gap from the measured moments. In $\Mx$ the gap is a broad
-bump at $M_X\approx2.4\GeV$, above the $D$ and $D^*$ masses and around the $D^{**}$ states. In $\El$ it peaks near
+bump at $M_X\approx2.3\GeV$, above the $D$ and $D^*$ masses and around the $D^{**}$ states. In $\El$ it peaks near
 $1.45\GeV$ and extends down to about $0.3\GeV$. In $q^2$ it falls slowly over the full range. The gap moments are
 allowed for all three observables: in $\nGapAllowedMx\%$ of the toys for $\Mx$ and in all toys for $\El$ and $q^2$.
 \begin{figure}[htbp]\centering
