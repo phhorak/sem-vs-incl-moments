@@ -83,7 +83,7 @@ def _parse_central_h5(path: Path) -> list[dict]:
 def build_exp_moments_df(data_dir: Path) -> pd.DataFrame:
     """Load *_central.h5 files; return DataFrame with measured + calculated rows."""
     central_files = sorted(
-        p for p in data_dir.glob("*_central.h5")
+        p for p in data_dir.rglob("*_central.h5")
         if "_raw" not in p.name and "cov" not in p.name.lower()
     )
     print(f"  Found {len(central_files)} central HDF5 files")

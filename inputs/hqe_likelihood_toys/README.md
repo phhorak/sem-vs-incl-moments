@@ -19,5 +19,10 @@ predictions at nonzero thresholds, included for cross-checks but not used by the
 
 Context: originally proposed by Markus (2026-09-14/15) as a way to extrapolate to the full
 phase space via the HQE fit and solve the Hausdorff moment problem there, instead of (or in
-addition to) the gap-region SEM-subtraction approach. Used by `8_data_results.py` (HQE inversion)
-and `7_asimov_closure.py` (inclusive-moment systematic of the Asimov closure test).
+addition to) the gap-region SEM-subtraction approach. Read by the step-4 bundle (`data.hqe_toys` in
+config.yaml) and from there by steps 5-8.
+
+`likelihood_toys_2026-10-16_belle_belle2.h5` (nominal since 2026-10-16): same 73 columns, 10800 toys,
+from the fit to the corrected experimental input (`inputs/inclusive_moments_data_2026-10-15.tar.gz`:
+Belle E_l and CLEO M_X covariances were diagonal before, Belle M_X errors reduced), with the combined
+Belle + Belle II q^2 moments. `likelihood_toys.h5` is the previous version (2026-09-18).
