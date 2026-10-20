@@ -66,7 +66,8 @@ def run(B):
             tf.extractall(tmp, filter="data")
         data = df_to_plot_dict(build_exp_moments_df(Path(tmp)), "calculated")
     EXP = {"babar": ("BaBar", "#8c564b", "D"), "belle": ("Belle", "#1f77b4", "o"),
-           "belleII": ("Belle II", "#ff7f0e", "s"), "cleo": ("CLEO", "#2ca02c", "^")}
+           "belleII": ("Belle II", "#ff7f0e", "s"), "cleo": ("CLEO", "#2ca02c", "^"),
+           "delphi": ("DELPHI", "#9467bd", "P"), "cdf": ("CDF", "#e377c2", "X")}
     ROWS = [("mx", r"$\langle M_X^{2n}\rangle$", r"$E_{\ell,\mathrm{cut}}\,[\mathrm{GeV}]$"),
             ("el", r"$\langle E_\ell^n\rangle$", r"$E_{\ell,\mathrm{cut}}\,[\mathrm{GeV}]$"),
             ("q2", r"$\langle q^{2n}\rangle$", r"$q^2_{\mathrm{cut}}\,[\mathrm{GeV}^2]$")]
@@ -80,7 +81,9 @@ def run(B):
                     _, col, mk = EXP[exp]
                     ax.errorbar(e["cuts"], e["values"], yerr=e["errors"], ls="", marker=mk, color=col, mec="black",
                                 ecolor=col, lw=1.6, ms=7, capsize=2, zorder=20)
-            ax.errorbar([0.0], [hc[3 * r + c]], yerr=[herr[3 * r + c]], ls="", marker="*", color="#d62728", mec="black",
+            # DELPHI measures at cut 0: draw the HQE star just left of it
+            x0 = -0.1 * ("delphi" in data[f"{v}_{c + 1}"])
+            ax.errorbar([x0], [hc[3 * r + c]], yerr=[herr[3 * r + c]], ls="", marker="*", color="#d62728", mec="black",
                         ecolor="#d62728", lw=2, ms=20, capsize=3, zorder=25)
             if c == 0:
                 ax.set_ylabel(ylabel, fontsize=30, labelpad=8)
@@ -93,7 +96,7 @@ def run(B):
                     ha="left" if r else "right", va="top")
     h = [Line2D([], [], marker=mk, color=col, mec="black", ls="", ms=10, label=l) for l, col, mk in EXP.values()]
     h.append(Line2D([], [], marker="*", color="#d62728", mec="black", ls="", ms=22, label=r"HQE fit, $\mathrm{cut}=0$"))
-    fig.legend(handles=h, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.02), fontsize=24)
+    fig.legend(handles=h, loc="lower center", ncol=4, frameon=False, bbox_to_anchor=(0.5, -0.02), fontsize=24)
     fig.subplots_adjust(left=0.09, right=0.985, top=0.985, bottom=0.135, wspace=0.30, hspace=0.35)
     fig.savefig(fd / "hqe_moments.pdf", bbox_inches="tight")
     plt.close(fig)
