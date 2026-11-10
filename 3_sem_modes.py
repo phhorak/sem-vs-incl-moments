@@ -8,6 +8,7 @@ D**). Writes data/sem_component_moments.json, read by lib/variants.py.
 
 Usage:
   python3 3_sem_modes.py [--phsp-cocktail FILE]
+  python3 3_sem_modes.py --candidates
 """
 import argparse
 import json
@@ -20,7 +21,7 @@ import yaml
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from lib.bundle import output_root
-from lib.variants import PATH as COMP_JSON
+from lib.variants import CANDIDATES, PATH as COMP_JSON
 
 
 def build_moments(cfg, phsp_cocktail):
@@ -94,9 +95,21 @@ def build_moments(cfg, phsp_cocktail):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--phsp-cocktail", help="cocktail parquet with the 5-body PHSP D(*)pipi")
+    p.add_argument("--candidates", action="store_true", help="only the candidate gap modes of step 2 -> data/candidate_moments.json")
     args = p.parse_args()
+    cfg = yaml.safe_load(open(HERE / "config.yaml"))
+    if args.candidates:
+        import pandas as pd
+        out = {}
+        for s in cfg["generation"]["gap_modes"]:
+            d = pd.read_parquet(output_root(cfg, HERE) / "2" / f"{s}.parquet", columns=["Mx", "El_B", "q2", "total_weight"])
+            d = d[np.isfinite(d.to_numpy()).all(axis=1) & (d.total_weight > 0)]
+            w = d.total_weight.to_numpy() / d.total_weight.sum()
+            out[s] = [float(np.sum(w * x ** k)) for x in (d.Mx.to_numpy() ** 2, d.El_B.to_numpy(), d.q2.to_numpy()) for k in (1, 2, 3)]
+        json.dump(out, open(CANDIDATES, "w"), indent=1)
+        return
     sys.path.insert(0, str(HERE / "MCAmbulance"))
-    build_moments(yaml.safe_load(open(HERE / "config.yaml")), args.phsp_cocktail)
+    build_moments(cfg, args.phsp_cocktail)
 
 
 if __name__ == "__main__":

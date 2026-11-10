@@ -249,6 +249,7 @@ Belle~II cocktail (nominal) & \nLineshapeAllowed \\
 no Hammer weights for broad states & \nLineshapeAllowed \\
 HQE $\Mx$ uncertainty doubled & \nLineshapeAllowed \\
 $D_1'$:$D_0^*$ split of $D^{(*)}\pi\pi$ from 0 to 1 & \nLineshapeAllowed \\
+$D^{(*)}\pi\pi$ replaced by the higher $D^{**}$ states of the LHCb cocktail & \nLineshapeAllowed \\
 other kinematic ranges & \nLineshapeAllowed \\
 LHCb-style cocktail (ISGW2 $D^{**}$, higher $D^{**}$ states instead of $D^{(*)}\pi\pi$, no $D_sK$) & \nLineshapeAllowed \\
 \midrule
@@ -264,6 +265,11 @@ The high-mass tails of the broad states set the SEM $\Mx$ variance, so the test 
 model puts too much rate at high $\Mx$ and is rejected ($p < 0.05$) in $\nPhspRejFrac\%$ of the toys. This makes the
 inclusive $\Mx$ moments a data-based check of the lineshapes used in inclusive and $R(X)$ analyses. One caveat is still
 open: the MC calibration of the measured $M_X$ moments.
+
+The test does not single out our $D^{(*)}\pi\pi$ lineshape. Replacing it by the higher $D^{**}$ states of the LHCb
+cocktail ($D(2S)$, $D^*(2S)$, $D(2750)$, $D(3000)$) shifts the gap moments by at most $\nLhcbDpipiShift\sigma$ of their
+toy spread, and all observables stay allowed. We keep the broad $D_1'$ and $D_0^*$ as nominal: they are the lineshape of
+the Belle~II cocktail, and the higher $D^{**}$ states have not been measured in semileptonic $B$ decays.
 
 Doubling the uncertainty of $\BR_\text{incl}$ (which raises that of $\BR_\text{gap}$ by a factor $\nGInclUnc$) weakens
 both rejections, to $p = \nPhspInclP$ for the phase-space lineshape and $p = \nBareInclP$ for the bare EvtGen lineshapes.

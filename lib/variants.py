@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 PATH = Path(__file__).resolve().parents[1] / "data" / "sem_component_moments.json"
+CANDIDATES = PATH.with_name("candidate_moments.json")
 DSS = ("D1", "D0st", "Dp1", "D2st")
 LHCB_DSS = {"D0st": (0.2941 + 0.2970) / 2, "D1": (0.2941 + 0.2772) / 2, "Dp1": (0.2647 + 0.3069) / 2,
             "D2st": (0.1471 + 0.1188) / 2}
@@ -24,6 +25,11 @@ LHCB_HIGHER = {"D2S": 0.45, "Dst2S": 0.05, "D2750": 0.45, "D3000": 0.05}
 
 def load():
     return json.load(open(PATH))
+
+
+def candidates():
+    """Raw moments m1..m3 of (mx2, el, q2) of the candidate gap modes (step 3 --candidates)."""
+    return {k: np.array(v) for k, v in json.load(open(CANDIDATES)).items()}
 
 
 def modes(C):

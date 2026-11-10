@@ -132,6 +132,9 @@ generation:
     - Dp1DstEta
     - Dp1Deta
     - DsKenu
+    - DsStarKenu
+    - DsKStarenu
+    - DsStarKStarenu
     - LcPenu
     - D0stDeta
     - D1_2550Deta

@@ -4,7 +4,7 @@
 Reads ROOT files from output/1/ and the digitized D_sK, Lambda_c pbar spectra from inputs/digitized/, writes
 parquets to output/2/.
 Produces figures:
-  figures/2/gap_reweight_{mode}.png  — pre/post digitized-shape reweight (DsKenu, LcPenu)
+  figures/2/gap_reweight_{mode}.png  — pre/post digitized-shape reweight (DsKenu and its excited variants, LcPenu)
 """
 import argparse
 import glob
@@ -647,6 +647,9 @@ GAP_MODES_PROC = {
     "Dp1DstEta":      _gap_info("Dp1DstEta",      r"gap: $D_1'{\to}D^*\eta$"),
     "Dp1Deta":        _gap_info("Dp1Deta",        r"gap: $D_1'{\to}D\eta$"),
     "DsKenu":         _gap_info("DsKenu_gap",     r"gap: $D_s K$ (dummy-res.)"),
+    "DsStarKenu":     _gap_info("DsStarKenu",     r"gap: $D_s^* K$ (dummy-res.)"),
+    "DsKStarenu":     _gap_info("DsKStarenu",     r"gap: $D_s K^*$ (dummy-res.)"),
+    "DsStarKStarenu": _gap_info("DsStarKStarenu", r"gap: $D_s^* K^*$ (dummy-res.)"),
     "LcPenu":         _gap_info("LcPenu",         r"gap: $\Lambda_c\bar{p}$ (dummy-res.)"),
     "D0stDeta":       _gap_info("D0stDeta",       r"gap: $D_0^*{\to}D\eta$"),
     "D1_2550Deta":    _gap_info("D1_2550Deta",    r"gap: $D_1(2550){\to}D\eta$"),
@@ -655,9 +658,15 @@ GAP_MODES_PROC = {
     "Dst0pipipipenu": _gap_info("Dst0pipipipenu", r"gap: $D_2^*{\to}D^*\pi\pi\pi$"),
 }
 
+# (digitized spectrum, the two daughters of the dummy resonance, mass shift). The excited D_s K modes have no measured
+# spectrum: they take the D_s K spectrum as a function of the mass above their own threshold.
+_M_DS, _M_DSST, _M_K, _M_KST = 1.96835, 2.1122, 0.49368, 0.89167
 _DIGITIZED_MODES = {
-    "DsKenu": ("dsk",       "d1d0", "d1d1"),
-    "LcPenu": ("lambdac_p", "d1d0", "d1d1"),
+    "DsKenu":         ("dsk",       "d1d0", "d1d1", 0.0),
+    "DsStarKenu":     ("dsk",       "d1d0", "d1d1", _M_DSST - _M_DS),
+    "DsKStarenu":     ("dsk",       "d1d0", "d1d1", _M_KST - _M_K),
+    "DsStarKStarenu": ("dsk",       "d1d0", "d1d1", _M_DSST - _M_DS + _M_KST - _M_K),
+    "LcPenu":         ("lambdac_p", "d1d0", "d1d1", 0.0),
 }
 
 bf_gap   = rw["bf_gap"]
@@ -751,7 +760,7 @@ if not args.skip_gap:
             print(f"  [warn] MCAmbulance skipped for {mode}: missing columns {missing}")
 
         if mode in _DIGITIZED_MODES:
-            key, d1, d2 = _DIGITIZED_MODES[mode]
+            key, d1, d2, shift = _DIGITIZED_MODES[mode]
             csv_path = digitized / f"{key}_digitized.csv"
             needed   = [f"{d1}_mcE", f"{d1}_mcPX", f"{d1}_mcPY", f"{d1}_mcPZ",
                         f"{d2}_mcE", f"{d2}_mcPX", f"{d2}_mcPY", f"{d2}_mcPZ"]
@@ -773,7 +782,7 @@ if not args.skip_gap:
                     e2  = gdf[f"{d2}_mcE"].to_numpy(float);  px2 = gdf[f"{d2}_mcPX"].to_numpy(float)
                     py2 = gdf[f"{d2}_mcPY"].to_numpy(float); pz2 = gdf[f"{d2}_mcPZ"].to_numpy(float)
                     m2  = (e1+e2)**2 - ((px1+px2)**2 + (py1+py2)**2 + (pz1+pz2)**2)
-                    m   = np.sqrt(np.clip(m2, 0, None))
+                    m   = np.sqrt(np.clip(m2, 0, None)) - shift
 
                     m_thr  = float(np.nanmin(m))
                     w0     = gdf["total_weight"].to_numpy(float)
